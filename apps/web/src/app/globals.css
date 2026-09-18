@@ -7,11 +7,6 @@
 
 /* ============================================
    THEME TOKENS
-   These become Tailwind utilities:
-   --color-gold      → bg-gold, text-gold, border-gold
-   --color-orange    → bg-orange, text-orange
-   --font-display    → font-display
-   --font-sans       → font-sans
    ============================================ */
 
 @theme {
@@ -33,12 +28,9 @@
   --color-danger: #ef4444;
   --color-info: #3b82f6;
 
-  /* ---------- Fonts ---------- */
+  /* ---------- Fonts (overridden by next/font variables in layout.tsx) ---------- */
   --font-display: "Kaushan Script", cursive;
-  --font-sans: "Manrope", "Inter", system-ui, sans-serif;
-
-  /* ---------- Custom Gradient ---------- */
-  --gradient-brand: linear-gradient(135deg, #f59e0b, #ec6408);
+  --font-sans: "Manrope", system-ui, sans-serif;
 }
 
 /* ============================================
@@ -46,9 +38,6 @@
    ============================================ */
 
 @layer base {
-  /* Import Google Fonts */
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Manrope:wght@300;400;500;600;700;800&family=Kaushan+Script&display=swap');
-
   * {
     box-sizing: border-box;
   }
@@ -59,7 +48,7 @@
     padding: 0;
     background-color: #f8fafc;
     color: #1e293b;
-    font-family: "Manrope", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--font-sans);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -88,11 +77,9 @@
 
 /* ============================================
    COMPONENT LAYER
-   Reusable classes built on top of Tailwind
    ============================================ */
 
 @layer components {
-  /* Brand gradient text — for special headings */
   .text-brand-gradient {
     background: linear-gradient(135deg, #f59e0b, #ec6408);
     -webkit-background-clip: text;
@@ -100,7 +87,6 @@
     color: transparent;
   }
 
-  /* Loading skeleton animation */
   .skeleton {
     background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
     background-size: 200% 100%;
