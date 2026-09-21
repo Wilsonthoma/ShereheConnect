@@ -1,6 +1,5 @@
 /* ============================================
    SHEREHECONNECT - GLOBAL STYLES
-   Tailwind CSS 4 + Custom Design Tokens
    ============================================ */
 
 @import "tailwindcss";
@@ -10,40 +9,74 @@
    ============================================ */
 
 @theme {
-  /* ---------- Brand Colors ---------- */
   --color-gold: #f59e0b;
+  --color-gold-light: #fbbf24;
   --color-orange: #ec6408;
   --color-red: #ef4444;
 
-  /* ---------- Neutrals ---------- */
   --color-dark: #1e293b;
+  --color-dark-deep: #111827;
+  --color-dark-card: #1a1a2e;
   --color-gray: #64748b;
-  --color-light-gray: #94a3b8;
+  --color-gray-light: #94a3b8;
+  --color-gray-dark: #475569;
   --color-light: #f8fafc;
   --color-border: #e2e8f0;
+  --color-border-dark: rgba(55, 65, 81, 0.8);
 
-  /* ---------- Status ---------- */
   --color-success: #10b981;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
   --color-info: #3b82f6;
 
-  /* ---------- Fonts (overridden by next/font variables in layout.tsx) ---------- */
-  --font-display: "Kaushan Script", cursive;
-  --font-sans: "Manrope", system-ui, sans-serif;
+  --font-display: var(--font-display), cursive;
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-card: 0 10px 30px -12px rgba(0, 0, 0, 0.25);
+  --shadow-card-hover: 0 25px 40px -15px rgba(0, 0, 0, 0.35);
 }
 
-/* ============================================
-   BASE STYLES
-   ============================================ */
+@keyframes float {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50%      { transform: translateY(-20px) translateX(10px); }
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50%      { transform: translateY(-30px) translateX(-15px); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%      { opacity: 0.7; transform: scale(1.05); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 @layer base {
-  * {
-    box-sizing: border-box;
-  }
+  * { box-sizing: border-box; }
 
-  html,
-  body {
+  html, body {
     margin: 0;
     padding: 0;
     background-color: #f8fafc;
@@ -54,30 +87,11 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  body {
-    min-height: 100vh;
-  }
-
-  a {
-    color: inherit;
-    text-decoration: none;
-  }
-
-  button {
-    font-family: inherit;
-    cursor: pointer;
-  }
-
-  input,
-  textarea,
-  select {
-    font-family: inherit;
-  }
+  body { min-height: 100vh; }
+  a { color: inherit; text-decoration: none; }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; }
+  input, textarea, select { font-family: inherit; }
 }
-
-/* ============================================
-   COMPONENT LAYER
-   ============================================ */
 
 @layer components {
   .text-brand-gradient {
@@ -87,14 +101,405 @@
     color: transparent;
   }
 
+  .bg-brand-gradient {
+    background: linear-gradient(135deg, #f59e0b, #ec6408);
+  }
+
   .skeleton {
     background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
   }
 
-  @keyframes shimmer {
-    0%   { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+  .hover-lift {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.5s ease-out;
+  }
+
+  /* ============================================
+     DISPLAY HEADINGS
+     Kaushan Script has ascenders/descenders that
+     get clipped with tight line-heights.
+     Fixed with generous line-height + padding.
+     ============================================ */
+
+  .heading-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    line-height: 1.3;
+    padding-top: 0.15em;
+    padding-bottom: 0.15em;
+    overflow: visible;
+    display: block;
+  }
+
+  /* Sizes — matched to reference: clamp(48px, 9vw, 88px) */
+  .heading-xl {
+    font-size: clamp(56px, 10vw, 100px);
+    line-height: 1.25;
+    padding-top: 0.2em;
+    padding-bottom: 0.2em;
+  }
+
+  .heading-lg {
+    font-size: clamp(48px, 9vw, 88px);
+    line-height: 1.3;
+    padding-top: 0.2em;
+    padding-bottom: 0.2em;
+  }
+
+  .heading-md {
+    font-size: clamp(40px, 7vw, 68px);
+    line-height: 1.3;
+    padding-top: 0.2em;
+    padding-bottom: 0.2em;
+  }
+
+  @media (max-width: 768px) {
+    .heading-xl { font-size: clamp(42px, 8vw, 72px); }
+    .heading-lg { font-size: clamp(38px, 7vw, 64px); }
+    .heading-md { font-size: clamp(34px, 6vw, 52px); }
+  }
+
+  @media (max-width: 480px) {
+    .heading-xl { font-size: clamp(34px, 6vw, 56px); }
+    .heading-lg { font-size: clamp(30px, 6vw, 48px); }
+    .heading-md { font-size: clamp(28px, 5vw, 42px); }
   }
 }
+
+/* ============================================
+   RESPONSIVE SYSTEM
+   Shared across all pages, components, and media
+   ============================================ */
+
+@layer base {
+  /* ---------- Fluid Typography ----------
+     Sizes scale smoothly with viewport, no breakpoints needed.
+     clamp(min, preferred, max) */
+
+  .text-fluid-xs {
+    font-size: clamp(0.75rem, 1.5vw, 0.875rem);
+  }
+
+  .text-fluid-sm {
+    font-size: clamp(0.875rem, 1.8vw, 1rem);
+  }
+
+  .text-fluid-base {
+    font-size: clamp(1rem, 2vw, 1.125rem);
+  }
+
+  .text-fluid-lg {
+    font-size: clamp(1.125rem, 2.5vw, 1.5rem);
+  }
+
+  .text-fluid-xl {
+    font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+  }
+
+  .text-fluid-2xl {
+    font-size: clamp(2rem, 5vw, 3rem);
+  }
+
+  .text-fluid-3xl {
+    font-size: clamp(2.5rem, 7vw, 4.5rem);
+  }
+
+  .text-fluid-4xl {
+    font-size: clamp(3rem, 9vw, 6rem);
+  }
+
+  /* ---------- Fluid Spacing ---------- */
+
+  .p-fluid-sm  { padding: clamp(0.75rem, 2vw, 1.25rem); }
+  .p-fluid-md  { padding: clamp(1rem, 3vw, 2rem); }
+  .p-fluid-lg  { padding: clamp(1.5rem, 4vw, 3rem); }
+  .p-fluid-xl  { padding: clamp(2rem, 5vw, 4rem); }
+  .p-fluid-2xl { padding: clamp(3rem, 7vw, 6rem); }
+
+  .px-fluid-sm { padding-left: clamp(0.75rem, 2vw, 1.25rem); padding-right: clamp(0.75rem, 2vw, 1.25rem); }
+  .px-fluid-md { padding-left: clamp(1rem, 3vw, 2rem); padding-right: clamp(1rem, 3vw, 2rem); }
+  .px-fluid-lg { padding-left: clamp(1.5rem, 4vw, 3rem); padding-right: clamp(1.5rem, 4vw, 3rem); }
+
+  .py-fluid-sm { padding-top: clamp(0.75rem, 2vw, 1.25rem); padding-bottom: clamp(0.75rem, 2vw, 1.25rem); }
+  .py-fluid-md { padding-top: clamp(1rem, 3vw, 2rem); padding-bottom: clamp(1rem, 3vw, 2rem); }
+  .py-fluid-lg { padding-top: clamp(1.5rem, 4vw, 3rem); padding-bottom: clamp(1.5rem, 4vw, 3rem); }
+  .py-fluid-xl { padding-top: clamp(2rem, 5vw, 4rem); padding-bottom: clamp(2rem, 5vw, 4rem); }
+  .py-fluid-2xl { padding-top: clamp(3rem, 7vw, 6rem); padding-bottom: clamp(3rem, 7vw, 6rem); }
+
+  .gap-fluid-sm { gap: clamp(0.5rem, 1.5vw, 1rem); }
+  .gap-fluid-md { gap: clamp(1rem, 2.5vw, 1.5rem); }
+  .gap-fluid-lg { gap: clamp(1.5rem, 4vw, 2.5rem); }
+
+  .m-fluid-md { margin: clamp(1rem, 3vw, 2rem); }
+  .mt-fluid-md { margin-top: clamp(1rem, 3vw, 2rem); }
+  .mb-fluid-md { margin-bottom: clamp(1rem, 3vw, 2rem); }
+  .my-fluid-lg { margin-top: clamp(1.5rem, 4vw, 3rem); margin-bottom: clamp(1.5rem, 4vw, 3rem); }
+
+  /* ---------- Responsive Containers ----------
+     Max-width containers that adapt to each screen */
+
+  .container-xs  { width: 100%; max-width: 480px;  margin-left: auto; margin-right: auto; padding-left: 1rem; padding-right: 1rem; }
+  .container-sm  { width: 100%; max-width: 640px;  margin-left: auto; margin-right: auto; padding-left: 1rem; padding-right: 1rem; }
+  .container-md  { width: 100%; max-width: 768px;  margin-left: auto; margin-right: auto; padding-left: 1rem; padding-right: 1rem; }
+  .container-lg  { width: 100%; max-width: 1024px; margin-left: auto; margin-right: auto; padding-left: 1.25rem; padding-right: 1.25rem; }
+  .container-xl  { width: 100%; max-width: 1280px; margin-left: auto; margin-right: auto; padding-left: 1.5rem; padding-right: 1.5rem; }
+  .container-2xl { width: 100%; max-width: 1536px; margin-left: auto; margin-right: auto; padding-left: 1.5rem; padding-right: 1.5rem; }
+  .container-3xl { width: 100%; max-width: 1920px; margin-left: auto; margin-right: auto; padding-left: 2rem; padding-right: 2rem; }
+
+  /* Fluid container — adapts to any screen size, TV-safe */
+  .container-fluid {
+    width: 100%;
+    max-width: min(95vw, 1920px);
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: clamp(1rem, 3vw, 3rem);
+    padding-right: clamp(1rem, 3vw, 3rem);
+  }
+
+  /* TV-safe container — for very large screens */
+  .container-tv {
+    width: 100%;
+    max-width: 2560px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: clamp(2rem, 4vw, 6rem);
+    padding-right: clamp(2rem, 4vw, 6rem);
+  }
+
+  /* ---------- Responsive Media ----------
+     Images, videos, embeds that scale safely */
+
+  .media-responsive {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+    max-width: 100%;
+  }
+
+  .media-square {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    object-fit: cover;
+  }
+
+  .media-video {
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    object-fit: cover;
+  }
+
+  .media-portrait {
+    aspect-ratio: 4 / 5;
+    width: 100%;
+    object-fit: cover;
+  }
+
+  .media-wide {
+    aspect-ratio: 21 / 9;
+    width: 100%;
+    object-fit: cover;
+  }
+
+  /* ---------- Responsive Grids ----------
+     Auto-adjusting grids that work from phone to TV */
+
+  .grid-auto-sm {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+    gap: clamp(1rem, 2vw, 1.5rem);
+  }
+
+  .grid-auto-md {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: clamp(1rem, 2vw, 1.75rem);
+  }
+
+  .grid-auto-lg {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: clamp(1.25rem, 2.5vw, 2rem);
+  }
+
+  /* TV grid — larger min-width for big screens */
+  .grid-auto-tv {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
+    gap: clamp(1.5rem, 3vw, 3rem);
+  }
+
+  /* ---------- Responsive Stack ----------
+     Vertical layout that becomes horizontal on larger screens */
+
+  .stack-responsive {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1rem, 3vw, 2rem);
+  }
+
+  @media (min-width: 768px) {
+    .stack-responsive {
+      flex-direction: row;
+      align-items: center;
+    }
+  }
+
+  /* ---------- Hide/Show by Screen ----------
+     Centralized visibility rules */
+
+  /* Hide on phones */
+  @media (max-width: 639px) {
+    .hide-mobile { display: none !important; }
+  }
+
+  /* Hide on tablets */
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .hide-tablet { display: none !important; }
+  }
+
+  /* Hide on desktop */
+  @media (min-width: 1024px) and (max-width: 1535px) {
+    .hide-desktop { display: none !important; }
+  }
+
+  /* Hide on TV and ultra-wide */
+  @media (min-width: 1920px) {
+    .hide-tv { display: none !important; }
+  }
+
+  /* Show only on phones */
+  @media (min-width: 640px) {
+    .show-mobile-only { display: none !important; }
+  }
+
+  /* Show only on tablets */
+  @media not all and (min-width: 640px) and (max-width: 1023px) {
+    .show-tablet-only { display: none !important; }
+  }
+
+  /* Show only on desktop */
+  @media not all and (min-width: 1024px) and (max-width: 1535px) {
+    .show-desktop-only { display: none !important; }
+  }
+
+  /* Show only on TV */
+  @media not all and (min-width: 1920px) {
+    .show-tv-only { display: none !important; }
+  }
+
+  /* ---------- Responsive Aspect Ratio ---------- */
+
+  .aspect-video { aspect-ratio: 16 / 9; }
+  .aspect-square { aspect-ratio: 1 / 1; }
+  .aspect-portrait { aspect-ratio: 4 / 5; }
+  .aspect-cinema { aspect-ratio: 21 / 9; }
+
+  /* ---------- Responsive Text Alignment ---------- */
+
+  .text-responsive-center {
+    text-align: center;
+  }
+
+  @media (min-width: 768px) {
+    .text-responsive-center {
+      text-align: left;
+    }
+  }
+
+  /* ---------- Responsive Max-Width for Content ---------- */
+
+  .prose-responsive {
+    max-width: 65ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* ---------- Touch-Friendly Targets ---------- */
+  /* Ensure minimum tap targets on touch devices */
+
+  @media (hover: none) and (pointer: coarse) {
+    .touch-target {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    /* Reduce hover animations on touch */
+    .hover-lift:hover {
+      transform: none;
+    }
+  }
+
+  /* ---------- Reduced Motion ---------- */
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* ---------- High DPI / Retina ---------- */
+
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    /* Sharper borders on retina displays */
+    .retina-border {
+      border-width: 0.5px;
+    }
+  }
+
+  /* ---------- Print ---------- */
+
+  @media print {
+    .no-print { display: none !important; }
+
+    body {
+      background: white !important;
+      color: black !important;
+    }
+
+    a {
+      text-decoration: underline;
+      color: black;
+    }
+  }
+}
+
+/* ============================================
+   RESPONSIVE BREAKPOINT REFERENCE
+   Use these values consistently across components:
+
+   xs    320px   Small phones (iPhone SE)
+   sm    480px   Standard phones (iPhone 14)
+   md    640px   Large phones / small tablets
+   lg    768px   Tablets portrait (iPad Mini)
+   xl    1024px  Tablets landscape / small laptops
+   2xl   1280px  Desktops / laptops
+   3xl   1536px  Large desktops
+   4xl   1920px  Extra-wide / TVs
+   5xl   2560px  Ultra-wide / 4K TVs
+
+   Tailwind classes:
+   sm:  → 640px
+   md:  → 768px
+   lg:  → 1024px
+   xl:  → 1280px
+   2xl: → 1536px
+
+   For custom sizes beyond Tailwind defaults, use arbitrary values:
+   min-[1920px]:grid-cols-6
+   ============================================ */
