@@ -131,8 +131,19 @@ model User {
   fullName       String     @map("full_name") @db.VarChar(200)
   role           UserRole   @default(ATTENDEE)
   status         UserStatus @default(ACTIVE)
+
   emailVerified  Boolean    @default(false) @map("email_verified")
   phoneVerified  Boolean    @default(false) @map("phone_verified")
+
+  emailVerificationToken     String?   @map("email_verification_token")
+  emailVerificationAttempts  Int       @default(0) @map("email_verification_attempts")
+  emailVerificationExpires   DateTime? @map("email_verification_expires") @db.Timestamptz
+  emailVerifiedAt            DateTime? @map("email_verified_at") @db.Timestamptz
+
+  passwordResetToken         String?   @map("password_reset_token")
+  passwordResetExpires       DateTime? @map("password_reset_expires") @db.Timestamptz
+  passwordChangedAt          DateTime? @map("password_changed_at") @db.Timestamptz
+
   profileImageUrl String?   @map("profile_image_url")
   lastLoginAt    DateTime?  @map("last_login_at") @db.Timestamptz
   createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
@@ -151,6 +162,8 @@ model User {
   @@index([phone])
   @@index([role])
   @@index([status])
+  @@index([emailVerificationToken])
+  @@index([passwordResetToken])
   @@map("users")
 }
 

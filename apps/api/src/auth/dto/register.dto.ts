@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, MaxLength, Matches } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, Matches, IsOptional, IsIn } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail()
@@ -19,5 +19,10 @@ export class RegisterDto {
   @MinLength(2)
   @MaxLength(200)
   fullName: string;
-}
 
+  @IsOptional()
+  @IsIn(['ATTENDEE', 'ORGANIZER'], {
+    message: 'Role must be either ATTENDEE or ORGANIZER',
+  })
+  role?: 'ATTENDEE' | 'ORGANIZER';
+}

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Manrope, Kaushan_Script } from 'next/font/google';
 import './globals.css';
+import { ThemeProvider } from '@/lib/theme';
+import { ToastProvider } from '@/components/providers/ToastProvider';
 
 const manrope = Manrope({
   subsets: ['latin'],
@@ -20,7 +22,10 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
-  themeColor: '#111827',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
+    { media: '(prefers-color-scheme: dark)', color: '#020617' },
+  ],
 };
 
 export const metadata: Metadata = {
@@ -37,15 +42,38 @@ export const metadata: Metadata = {
   },
 };
 
+const themeInitScript = `
+(function() {
+  try {
+    var theme = localStorage.getItem('sherehe-theme') || 'system';
+    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var shouldBeDark = theme === 'dark' || (theme === 'system' && prefersDark);
+    if (shouldBeDark) {
+      document.documentElement.classList.add('dark');
+    }
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${manrope.variable} ${kaushan.variable}`}>
-      <body className="antialiased bg-light text-dark min-h-screen">
-        {children}
+    <html
+      lang="en"
+      className={`${manrope.variable} ${kaushan.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="antialiased min-h-screen">
+        <ThemeProvider>
+          {children}
+          <ToastProvider />
+        </ThemeProvider>
       </body>
     </html>
   );

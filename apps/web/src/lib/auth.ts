@@ -62,3 +62,18 @@ export function getRoleLabel(role: string): string {
       return 'Attendee';
   }
 }
+
+/**
+ * Get the home route for a given role.
+ * Used after login and for redirecting on role mismatch.
+ */
+export function getHomeRoute(role: string): string {
+  switch (role) {
+    case 'ORGANIZER':
+      return '/organizer/dashboard';
+    case 'ADMIN':
+      return '/admin/dashboard';
+    default:
+      return '/dashboard';
+  }
+}
