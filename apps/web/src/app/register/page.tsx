@@ -8,6 +8,7 @@ import { AuthLayout, RoleSelector } from '@/components/auth';
 import { authApi, ApiException } from '@/lib/api';
 import { setAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import {
   validateEmail,
   validateFullName,
@@ -18,7 +19,12 @@ import {
   normalizePhone,
 } from '@/lib/validation';
 
-type FieldName = 'fullName' | 'email' | 'phone' | 'password' | 'confirmPassword';
+type FieldName =
+  | 'fullName'
+  | 'email'
+  | 'phone'
+  | 'password'
+  | 'confirmPassword';
 
 interface FormState {
   fullName: string;
@@ -31,7 +37,14 @@ interface FormState {
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useLanguage();
   const nextParam = searchParams.get('next');
+
+  // Translation helper with English fallback
+  const tr = (key: string, fallback: string): string => {
+    const value = t(key as any);
+    return value === key ? fallback : value;
+  };
 
   const [role, setRole] = useState<'ATTENDEE' | 'ORGANIZER'>('ATTENDEE');
   const [form, setForm] = useState<FormState>({
@@ -55,13 +68,16 @@ function RegisterForm() {
   useEffect(() => {
     const token = localStorage.getItem('attendee_access_token');
     if (token) {
-      // Already logged in — redirect by role
       const userRaw = localStorage.getItem('attendee_user');
       if (userRaw) {
         try {
           const u = JSON.parse(userRaw);
           if (u.role === 'ATTENDEE' || u.emailVerified !== false) {
-            router.replace(u.role === 'ORGANIZER' ? '/organizer/dashboard' : '/dashboard');
+            router.replace(
+              u.role === 'ORGANIZER'
+                ? '/organizer/dashboard'
+                : '/dashboard',
+            );
           }
         } catch {}
       }
@@ -88,7 +104,10 @@ function RegisterForm() {
         return r.valid ? '' : r.error || '';
       },
       confirmPassword: () => {
-        const r = validateConfirmPassword(form.password, form.confirmPassword);
+        const r = validateConfirmPassword(
+          form.password,
+          form.confirmPassword,
+        );
         return r.valid ? '' : r.error || '';
       },
     }),
@@ -102,7 +121,8 @@ function RegisterForm() {
 
   const passwordStrength = getPasswordStrength(form.password);
   const passwordsMatch =
-    form.confirmPassword.length > 0 && form.password === form.confirmPassword;
+    form.confirmPassword.length > 0 &&
+    form.password === form.confirmPassword;
 
   const updateField = (field: FieldName, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -134,7 +154,9 @@ function RegisterForm() {
     });
 
     if (!isFormValid()) {
-      toast.error('Please fix the errors above');
+      toast.error(
+        tr('auth.register.error.fixErrors', 'Please fix the errors above'),
+      );
       return;
     }
 
@@ -159,23 +181,31 @@ function RegisterForm() {
         emailVerified: res.user.emailVerified,
       });
 
-      // Different messaging + redirect based on role
       if (res.user.role === 'ORGANIZER') {
         toast.success(
-          'Account created!',
-          'Check your email for the 6-digit verification code.',
+          tr('auth.register.success.organizerTitle', 'Account created!'),
+          tr(
+            'auth.register.success.organizerBody',
+            'Check your email for the 6-digit verification code.',
+          ),
         );
         setTimeout(() => {
           if (nextParam) {
             router.replace(nextParam);
           } else {
-            router.replace(`/verify-otp?email=${encodeURIComponent(res.user.email)}`);
+            router.replace(
+              `/verify-otp?email=${encodeURIComponent(res.user.email)}`,
+            );
           }
         }, 800);
       } else {
+        const firstName = res.user.fullName.split(' ')[0];
         toast.success(
-          'Welcome to ShereheConnect!',
-          `You're signed in as ${res.user.fullName.split(' ')[0]}.`,
+          tr('auth.register.success.attendeeTitle', 'Welcome to ShereheConnect!'),
+          `${tr(
+            'auth.register.success.attendeeBody',
+            "You're signed in as",
+          )} ${firstName}.`,
         );
         setTimeout(() => {
           if (nextParam) {
@@ -189,23 +219,31 @@ function RegisterForm() {
       const msg =
         err instanceof ApiException
           ? err.message
-          : 'Something went wrong. Please try again.';
-      toast.error('Registration failed', msg);
+          : tr(
+              'auth.register.error.generic',
+              'Something went wrong. Please try again.',
+            );
+      toast.error(
+        tr('auth.register.error.title', 'Registration failed'),
+        msg,
+      );
       setIsLoading(false);
     }
   };
 
   return (
     <AuthLayout
-      title="Create Account"
+      title={tr('auth.register.title', 'Create Account')}
       footer={
         <>
-          Already have an account?{' '}
+          {tr('auth.register.haveAccount', 'Already have an account?')}{' '}
           <Link
-            href={`/login${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ''}`}
+            href={`/login${
+              nextParam ? `?next=${encodeURIComponent(nextParam)}` : ''
+            }`}
             className="text-gold hover:text-orange font-semibold transition-colors"
           >
-            Sign In
+            {tr('auth.register.signIn', 'Sign In')}
           </Link>
         </>
       }
@@ -213,17 +251,23 @@ function RegisterForm() {
       <RoleSelector value={role} onChange={setRole} />
 
       {/* Role-specific helper text */}
-      <p className="text-center text-[0.7rem] text-white/40 mb-3 -mt-1">
+      <p className="text-center text-[0.7rem] text-slate-500 dark:text-white/40 mb-3 -mt-1 transition-colors">
         {role === 'ORGANIZER'
-          ? 'Organizers verify their email to keep the platform secure.'
-          : 'Attendees can start exploring events right away.'}
+          ? tr(
+              'auth.register.helper.organizer',
+              'Organizers verify their email to keep the platform secure.',
+            )
+          : tr(
+              'auth.register.helper.attendee',
+              'Attendees can start exploring events right away.',
+            )}
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-3" noValidate>
         {/* Full Name */}
         <FormField
           type="text"
-          placeholder="Full name"
+          placeholder={tr('auth.register.fullName.placeholder', 'Full name')}
           value={form.fullName}
           onChange={(v) => updateField('fullName', v)}
           onBlur={() => handleBlur('fullName')}
@@ -236,7 +280,10 @@ function RegisterForm() {
         {/* Email */}
         <FormField
           type="email"
-          placeholder="you@example.com"
+          placeholder={tr(
+            'auth.register.email.placeholder',
+            'you@example.com',
+          )}
           value={form.email}
           onChange={(v) => updateField('email', v)}
           onBlur={() => handleBlur('email')}
@@ -249,7 +296,10 @@ function RegisterForm() {
         {/* Phone */}
         <FormField
           type="tel"
-          placeholder="0712 345 678"
+          placeholder={tr(
+            'auth.register.phone.placeholder',
+            '0712 345 678',
+          )}
           value={form.phone}
           onChange={(v) => updateField('phone', v)}
           onBlur={() => handleBlur('phone')}
@@ -263,7 +313,10 @@ function RegisterForm() {
         <div>
           <FormField
             type={showPassword ? 'text' : 'password'}
-            placeholder="Password (min 8 characters)"
+            placeholder={tr(
+              'auth.register.password.placeholder',
+              'Password (min 8 characters)',
+            )}
             value={form.password}
             onChange={(v) => updateField('password', v)}
             onBlur={() => handleBlur('password')}
@@ -273,11 +326,19 @@ function RegisterForm() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="text-white/50 hover:text-gold transition-colors"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="text-slate-500 dark:text-white/50 hover:text-gold transition-colors"
+                aria-label={
+                  showPassword
+                    ? tr('auth.register.hidePassword', 'Hide password')
+                    : tr('auth.register.showPassword', 'Show password')
+                }
                 tabIndex={-1}
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
             }
             disabled={isLoading}
@@ -285,13 +346,15 @@ function RegisterForm() {
           />
           {form.password.length > 0 && (
             <div className="mt-1.5 flex items-center gap-2 px-1">
-              <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
+              <div className="flex-1 h-1 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
                 <div
                   className={`h-full transition-all duration-300 ${passwordStrength.color}`}
-                  style={{ width: `${(passwordStrength.score / 4) * 100}%` }}
+                  style={{
+                    width: `${(passwordStrength.score / 4) * 100}%`,
+                  }}
                 />
               </div>
-              <span className="text-[0.65rem] text-white/50 font-medium">
+              <span className="text-[0.65rem] text-slate-500 dark:text-white/50 font-medium">
                 {passwordStrength.label}
               </span>
             </div>
@@ -302,7 +365,10 @@ function RegisterForm() {
         <div>
           <FormField
             type={showConfirm ? 'text' : 'password'}
-            placeholder="Confirm password"
+            placeholder={tr(
+              'auth.register.confirmPassword.placeholder',
+              'Confirm password',
+            )}
             value={form.confirmPassword}
             onChange={(v) => updateField('confirmPassword', v)}
             onBlur={() => handleBlur('confirmPassword')}
@@ -312,11 +378,19 @@ function RegisterForm() {
               <button
                 type="button"
                 onClick={() => setShowConfirm(!showConfirm)}
-                className="text-white/50 hover:text-gold transition-colors"
-                aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                className="text-slate-500 dark:text-white/50 hover:text-gold transition-colors"
+                aria-label={
+                  showConfirm
+                    ? tr('auth.register.hidePassword', 'Hide password')
+                    : tr('auth.register.showPassword', 'Show password')
+                }
                 tabIndex={-1}
               >
-                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showConfirm ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
             }
             disabled={isLoading}
@@ -324,8 +398,8 @@ function RegisterForm() {
             success={passwordsMatch}
           />
           {passwordsMatch && (
-            <p className="mt-1 text-[0.7rem] text-emerald-400 px-1">
-              ✓ Passwords match
+            <p className="mt-1 text-[0.7rem] text-emerald-500 px-1">
+              ✓ {tr('auth.register.passwordsMatch', 'Passwords match')}
             </p>
           )}
         </div>
@@ -338,30 +412,42 @@ function RegisterForm() {
           {isLoading ? (
             <>
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Creating account...
+              {tr('auth.register.submitting', 'Creating account...')}
             </>
           ) : (
-            'Create Account'
+            tr('auth.register.submit', 'Create Account')
           )}
         </button>
       </form>
 
       <div className="relative my-5">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-white/10" />
+          <div className="w-full border-t border-slate-300 dark:border-white/10" />
         </div>
         <div className="relative flex justify-center text-xs">
-          <span className="px-3 bg-[#0f172a]/85 text-white/40">OR</span>
+          <span className="px-3 bg-white dark:bg-[#0f172a]/85 text-slate-500 dark:text-white/40 transition-colors">
+            {tr('auth.register.or', 'OR')}
+          </span>
         </div>
       </div>
 
       <button
         type="button"
-        onClick={() => toast.info('Coming soon', 'Google sign-up will be available shortly.')}
-        className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl bg-white/5 border border-white/15 text-white text-sm font-semibold hover:bg-white/10 hover:border-gold/40 transition-all"
+        onClick={() =>
+          toast.info(
+            tr('auth.register.google.comingSoon', 'Coming soon'),
+            tr(
+              'auth.register.google.body',
+              'Google sign-up will be available shortly.',
+            ),
+          )
+        }
+        className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-300 dark:border-white/15 text-slate-800 dark:text-white text-sm font-semibold hover:bg-slate-200 dark:hover:bg-white/10 hover:border-gold/40 transition-all"
       >
         <span className="text-base">G</span>
-        <span>Continue with Google</span>
+        <span>
+          {tr('auth.register.google.button', 'Continue with Google')}
+        </span>
       </button>
     </AuthLayout>
   );
@@ -401,16 +487,22 @@ function FormField({
   return (
     <div>
       <div
-        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-white/5 border transition-all ${
+        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border transition-all ${
           hasError
-            ? 'border-red/50 focus-within:border-red'
+            ? 'border-red-500/60 focus-within:border-red-500 bg-slate-100 dark:bg-white/5'
             : showSuccess
-              ? 'border-emerald-500/50 focus-within:border-emerald-500'
-              : 'border-white/15 focus-within:border-gold focus-within:bg-white/8'
+            ? 'border-emerald-500/50 focus-within:border-emerald-500 bg-slate-100 dark:bg-white/5'
+            : 'border-slate-300 dark:border-white/15 bg-slate-100 dark:bg-white/5 focus-within:border-gold focus-within:bg-white dark:focus-within:bg-white/8'
         }`}
       >
         {leftIcon && (
-          <span className={`shrink-0 ${hasError ? 'text-red/70' : 'text-white/40'}`}>
+          <span
+            className={`shrink-0 ${
+              hasError
+                ? 'text-red-500/70'
+                : 'text-slate-500 dark:text-white/40'
+            }`}
+          >
             {leftIcon}
           </span>
         )}
@@ -422,11 +514,13 @@ function FormField({
           onBlur={onBlur}
           autoComplete={autoComplete}
           disabled={disabled}
-          className="flex-1 bg-transparent outline-none text-sm text-white placeholder:text-white/40 min-w-0"
+          className="flex-1 bg-transparent outline-none text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/40 min-w-0"
         />
         {rightIcon && <span className="shrink-0">{rightIcon}</span>}
       </div>
-      {hasError && <p className="mt-1 text-[0.7rem] text-red px-1">{error}</p>}
+      {hasError && (
+        <p className="mt-1 text-[0.7rem] text-red-500 px-1">{error}</p>
+      )}
     </div>
   );
 }
@@ -435,7 +529,7 @@ export default function RegisterPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-dark-deep">
+        <div className="min-h-screen flex items-center justify-center bg-light dark:bg-dark-deep">
           <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" />
         </div>
       }

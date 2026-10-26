@@ -4,10 +4,13 @@ import {
   Get,
   Patch,
   Body,
+  Req,
   HttpCode,
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -16,55 +19,67 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { extractRequestContext } from './helpers/request-context.helper';
 
 @Controller('auth')
+@UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  /* ============================================
-     PUBLIC ROUTES
-     ============================================ */
+  /* ---------- PUBLIC ---------- */
 
   @Post('register')
-  async register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  @Throttle({ default: { limit: 5, ttl: 15 * 60 * 1000 } })
+  async register(@Body() dto: RegisterDto, @Req() req: Request) {
+    return this.authService.register(dto, extractRequestContext(req));
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  @Throttle({ default: { limit: 5, ttl: 15 * 60 * 1000 } })
+  async login(@Body() dto: LoginDto, @Req() req: Request) {
+    return this.authService.login(dto, extractRequestContext(req));
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 20, ttl: 15 * 60 * 1000 } })
+  async refresh(@Body() dto: RefreshTokenDto, @Req() req: Request) {
+    return this.authService.refresh(dto.refreshToken, extractRequestContext(req));
   }
 
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 15 * 60 * 1000 } })
   async verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto);
   }
 
   @Post('resend-otp')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 15 * 60 * 1000 } })
   async resendOtp(@Body() dto: ForgotPasswordDto) {
     return this.authService.resendOtp(dto.email);
   }
 
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 60 * 60 * 1000 } })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60 * 60 * 1000 } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }
 
-  /* ============================================
-     PROTECTED ROUTES (require JWT)
-     ============================================ */
+  /* ---------- PROTECTED ---------- */
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
@@ -83,5 +98,18 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(user.id, dto);
+  }
+
+  @Post('logout-all')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async logoutAll(@CurrentUser() user: any) {
+    return this.authService.logoutAll(user.id);
+  }
+
+  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
+  async getSessions(@CurrentUser() user: any) {
+    return this.authService.getSessions(user.id);
   }
 }

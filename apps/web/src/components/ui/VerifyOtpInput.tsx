@@ -1,6 +1,12 @@
 'use client';
 
-import { useRef, useEffect, KeyboardEvent, ClipboardEvent } from 'react';
+import {
+  useRef,
+  useEffect,
+  KeyboardEvent,
+  ClipboardEvent,
+} from 'react';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 
 interface VerifyOtpInputProps {
   value: string;
@@ -19,7 +25,14 @@ export function VerifyOtpInput({
   error = false,
   autoFocus = true,
 }: VerifyOtpInputProps) {
+  const { t } = useLanguage();
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Build aria-label for each digit box (fallback if key missing)
+  const digitLabel = (i: number) => {
+    const translated = t('otp.digit' as any, { number: i + 1 });
+    return translated === 'otp.digit' ? `Digit ${i + 1}` : translated;
+  };
 
   useEffect(() => {
     if (autoFocus && inputsRef.current[0]) {
@@ -39,14 +52,21 @@ export function VerifyOtpInput({
     const digit = raw.replace(/\D/g, '').slice(-1);
     if (!digit) return;
 
-    const next = (value.slice(0, index) + digit + value.slice(index + 1))
+    const next = (
+      value.slice(0, index) +
+      digit +
+      value.slice(index + 1)
+    )
       .replace(/\s/g, '')
       .slice(0, LENGTH);
     onChange(next);
     focusIndex(index + 1);
   };
 
-  const handleKeyDown = (index: number, e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (
+    index: number,
+    e: KeyboardEvent<HTMLInputElement>,
+  ) => {
     if (e.key === 'Backspace') {
       e.preventDefault();
       if (digits[index] && digits[index] !== ' ') {
@@ -66,7 +86,10 @@ export function VerifyOtpInput({
 
   const handlePaste = (e: ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, LENGTH);
+    const pasted = e.clipboardData
+      .getData('text')
+      .replace(/\D/g, '')
+      .slice(0, LENGTH);
     if (pasted) {
       onChange(pasted);
       focusIndex(pasted.length);
@@ -74,7 +97,9 @@ export function VerifyOtpInput({
   };
 
   const baseClasses =
-    'w-11 h-13 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold rounded-xl bg-white/5 border-2 transition-all outline-none text-white placeholder:text-white/20';
+    'w-11 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold rounded-xl border-2 transition-all outline-none ' +
+    'bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-white ' +
+    'placeholder:text-slate-400 dark:placeholder:text-white/20';
 
   return (
     <div className="flex items-center justify-center gap-2 sm:gap-2.5">
@@ -93,11 +118,11 @@ export function VerifyOtpInput({
           onPaste={handlePaste}
           onFocus={(e) => e.target.select()}
           disabled={disabled}
-          aria-label={`Digit ${i + 1}`}
+          aria-label={digitLabel(i)}
           className={`${baseClasses} ${
             error
-              ? 'border-red/50 focus:border-red'
-              : 'border-white/15 focus:border-gold focus:bg-white/8 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)]'
+              ? 'border-red-500/60 focus:border-red-500'
+              : 'border-slate-300 dark:border-white/15 focus:border-gold focus:bg-white dark:focus:bg-white/10 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.15)]'
           } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         />
       ))}

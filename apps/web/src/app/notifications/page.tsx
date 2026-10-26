@@ -1,17 +1,14 @@
 import { ProtectedRoute } from '@/components/auth';
-import { Navbar, Footer } from '@/components/layout';
+import { NotificationsContent } from '@/components/notifications/NotificationsContent';
 
 export default function NotificationsPage() {
   return (
     <ProtectedRoute>
-      <Navbar />
-      <main className="min-h-screen bg-light py-16 px-4">
+      <section className="min-h-screen bg-light dark:bg-slate-950 py-16 px-4 transition-colors">
         <div className="max-w-7xl mx-auto">
-          <h1 className="heading-display heading-md text-brand-gradient mb-6">Notifications</h1>
-          <p className="text-gray">Your notifications will appear here.</p>
+          <NotificationsContent />
         </div>
-      </main>
-      <Footer />
+      </section>
     </ProtectedRoute>
   );
 }

@@ -19,6 +19,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { RequestContext } from './helpers/request-context.helper';
 
 @Injectable()
 export class AuthService {
@@ -30,15 +31,12 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
-    private email: EmailService,
   ) {}
 
   /* ============================================
      REGISTER
-     - ATTENDEE: auto-verified, no OTP
-     - ORGANIZER: requires OTP verification
      ============================================ */
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, ctx?: RequestContext) {
     const normalizedPhone = this.normalizePhone(dto.phone);
     const role = dto.role || 'ATTENDEE';
     const requiresVerification = role === 'ORGANIZER';
@@ -56,14 +54,13 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    // Only organizers need OTP verification
     let otp: string | null = null;
     let otpHash: string | null = null;
     let expires: Date | null = null;
 
     if (requiresVerification) {
       otp = this.generateOTP();
-      otpHash = this.hashOTP(otp);
+      otpHash = this.hashToken(otp);
       expires = new Date(Date.now() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
     }
 
@@ -75,7 +72,6 @@ export class AuthService {
         fullName: dto.fullName,
         role,
         status: 'ACTIVE',
-        // Attendees auto-verified; organizers need OTP
         emailVerified: !requiresVerification,
         emailVerifiedAt: requiresVerification ? null : new Date(),
         emailVerificationToken: otpHash,
@@ -105,36 +101,44 @@ export class AuthService {
         },
       });
 
-      // Send OTP email only to organizers
       if (otp) {
         const template = verifyEmailTemplate({
           fullName: user.fullName,
           otp,
           expiryMinutes: this.OTP_EXPIRY_MINUTES,
         });
-        this.email
-          .send({ to: user.email, ...template })
-          .catch((err) => this.logger.error('OTP email failed:', err));
+        // EmailModule injection removed; using env directly
+        this.sendEmailFallback(user.email, template).catch((err) =>
+          this.logger.error('OTP email failed:', err),
+        );
       }
     }
 
     this.logger.log(`New ${role} registered: ${user.email}`);
 
-    const token = await this.signToken(user.id, user.email, user.role);
+    const { accessToken, refreshToken } = await this.signTokens(
+      user.id,
+      user.email,
+      user.role,
+      false,
+    );
+
+    // Record login session
+    if (ctx) {
+      await this.recordSession(user.id, ctx);
+    }
 
     return {
-      user: {
-        ...user,
-        requiresVerification,
-      },
-      accessToken: token,
+      user: { ...user, requiresVerification },
+      accessToken,
+      refreshToken,
     };
   }
 
   /* ============================================
      LOGIN
      ============================================ */
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, ctx?: RequestContext) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -150,7 +154,17 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    const token = await this.signToken(user.id, user.email, user.role);
+    const remember = dto.remember === true;
+    const { accessToken, refreshToken } = await this.signTokens(
+      user.id,
+      user.email,
+      user.role,
+      remember,
+    );
+
+    if (ctx) {
+      await this.recordSession(user.id, ctx);
+    }
 
     return {
       user: {
@@ -162,8 +176,102 @@ export class AuthService {
         status: user.status,
         emailVerified: user.emailVerified,
       },
-      accessToken: token,
+      accessToken,
+      refreshToken,
     };
+  }
+
+  /* ============================================
+     REFRESH ACCESS TOKEN
+     ============================================ */
+  async refresh(refreshToken: string, ctx?: RequestContext) {
+    const tokenHash = this.hashToken(refreshToken);
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        refreshToken: tokenHash,
+        refreshTokenExpires: { gt: new Date() },
+        status: 'ACTIVE',
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    // Rotate — issue new access + refresh tokens
+    // Preserve "remember me" duration if still valid
+    const wasRemembered =
+      user.refreshTokenExpires &&
+      user.refreshTokenExpires.getTime() - Date.now() > 7 * 24 * 60 * 60 * 1000;
+
+    const { accessToken, refreshToken: newRefreshToken } = await this.signTokens(
+      user.id,
+      user.email,
+      user.role,
+      !!wasRemembered,
+    );
+
+    // Update session activity
+    await this.prisma.loginSession.updateMany({
+      where: { userId: user.id, isActive: true },
+      data: { lastActiveAt: new Date() },
+    });
+
+    this.logger.log(`Token refreshed: ${user.email}`);
+
+    return {
+      accessToken,
+      refreshToken: newRefreshToken,
+    };
+  }
+
+  /* ============================================
+     LOGOUT ALL DEVICES
+     ============================================ */
+  async logoutAll(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        refreshToken: null,
+        refreshTokenExpires: null,
+        refreshTokenCreatedAt: null,
+      },
+    });
+
+    await this.prisma.loginSession.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false, revokedAt: new Date() },
+    });
+
+    this.logger.log(`All sessions revoked: ${user.email}`);
+    return { message: 'Logged out from all devices' };
+  }
+
+  /* ============================================
+     GET LOGIN SESSIONS
+     ============================================ */
+  async getSessions(userId: string) {
+    const sessions = await this.prisma.loginSession.findMany({
+      where: { userId },
+      orderBy: { lastActiveAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        ipAddress: true,
+        userAgent: true,
+        deviceLabel: true,
+        isActive: true,
+        lastActiveAt: true,
+        createdAt: true,
+        revokedAt: true,
+      },
+    });
+
+    return { sessions };
   }
 
   /* ============================================
@@ -174,9 +282,7 @@ export class AuthService {
       where: { email: dto.email },
     });
 
-    if (!user) {
-      throw new BadRequestException('Invalid email or code');
-    }
+    if (!user) throw new BadRequestException('Invalid email or code');
 
     if (user.emailVerified) {
       return { message: 'Email is already verified', alreadyVerified: true };
@@ -188,14 +294,11 @@ export class AuthService {
       );
     }
 
-    if (
-      !user.emailVerificationExpires ||
-      user.emailVerificationExpires < new Date()
-    ) {
+    if (!user.emailVerificationExpires || user.emailVerificationExpires < new Date()) {
       throw new BadRequestException('Code has expired. Please request a new one.');
     }
 
-    const otpHash = this.hashOTP(dto.otp);
+    const otpHash = this.hashToken(dto.otp);
     if (otpHash !== user.emailVerificationToken) {
       await this.prisma.user.update({
         where: { id: user.id },
@@ -239,7 +342,7 @@ export class AuthService {
     }
 
     const otp = this.generateOTP();
-    const otpHash = this.hashOTP(otp);
+    const otpHash = this.hashToken(otp);
     const expires = new Date(Date.now() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
 
     await this.prisma.user.update({
@@ -256,14 +359,14 @@ export class AuthService {
       otp,
       expiryMinutes: this.OTP_EXPIRY_MINUTES,
     });
-    await this.email.send({ to: user.email, ...template });
+    await this.sendEmailFallback(user.email, template);
 
     this.logger.log(`OTP resent: ${user.email}`);
     return { message: 'A new code has been sent to your email.' };
   }
 
   /* ============================================
-     FORGOT PASSWORD (link-based)
+     FORGOT PASSWORD
      ============================================ */
   async forgotPassword(dto: ForgotPasswordDto) {
     const user = await this.prisma.user.findUnique({
@@ -275,7 +378,7 @@ export class AuthService {
     }
 
     const token = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenHash = this.hashToken(token);
     const expires = new Date(Date.now() + 60 * 60 * 1000);
 
     await this.prisma.user.update({
@@ -291,7 +394,7 @@ export class AuthService {
       fullName: user.fullName,
       resetUrl,
     });
-    await this.email.send({ to: user.email, ...template });
+    await this.sendEmailFallback(user.email, template);
 
     this.logger.log(`Password reset requested: ${user.email}`);
     return { message: 'If your email is registered, a reset link has been sent.' };
@@ -301,7 +404,7 @@ export class AuthService {
      RESET PASSWORD
      ============================================ */
   async resetPassword(dto: ResetPasswordDto) {
-    const tokenHash = crypto.createHash('sha256').update(dto.token).digest('hex');
+    const tokenHash = this.hashToken(dto.token);
 
     const user = await this.prisma.user.findFirst({
       where: {
@@ -323,7 +426,16 @@ export class AuthService {
         passwordResetToken: null,
         passwordResetExpires: null,
         passwordChangedAt: new Date(),
+        // Revoke all sessions for security
+        refreshToken: null,
+        refreshTokenExpires: null,
+        refreshTokenCreatedAt: null,
       },
+    });
+
+    await this.prisma.loginSession.updateMany({
+      where: { userId: user.id, isActive: true },
+      data: { isActive: false, revokedAt: new Date() },
     });
 
     this.logger.log(`Password reset: ${user.email}`);
@@ -331,7 +443,7 @@ export class AuthService {
   }
 
   /* ============================================
-     CHANGE PASSWORD (logged in)
+     CHANGE PASSWORD
      ============================================ */
   async changePassword(userId: string, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -347,14 +459,23 @@ export class AuthService {
       data: {
         passwordHash,
         passwordChangedAt: new Date(),
+        // Revoke all sessions on password change
+        refreshToken: null,
+        refreshTokenExpires: null,
+        refreshTokenCreatedAt: null,
       },
     });
 
-    return { message: 'Password changed successfully' };
+    await this.prisma.loginSession.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false, revokedAt: new Date() },
+    });
+
+    return { message: 'Password changed successfully. Please log in again.' };
   }
 
   /* ============================================
-     UPDATE PROFILE (logged in)
+     UPDATE PROFILE
      ============================================ */
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -362,9 +483,7 @@ export class AuthService {
 
     const data: { fullName?: string; phone?: string } = {};
 
-    if (dto.fullName) {
-      data.fullName = dto.fullName.trim();
-    }
+    if (dto.fullName) data.fullName = dto.fullName.trim();
 
     if (dto.phone) {
       const normalized = this.normalizePhone(dto.phone);
@@ -372,9 +491,7 @@ export class AuthService {
         const taken = await this.prisma.user.findUnique({
           where: { phone: normalized },
         });
-        if (taken) {
-          throw new ConflictException('Phone number is already registered');
-        }
+        if (taken) throw new ConflictException('Phone number is already registered');
         data.phone = normalized;
       }
     }
@@ -400,6 +517,115 @@ export class AuthService {
   /* ============================================
      HELPERS
      ============================================ */
+
+  private async signTokens(
+    userId: string,
+    email: string,
+    role: string,
+    remember: boolean,
+  ) {
+    const payload = { sub: userId, email, role };
+
+    const accessToken = await this.jwt.signAsync(payload, {
+      secret: process.env.JWT_SECRET,
+      expiresIn: (process.env.JWT_EXPIRES_IN || '15m') as `${number}${'s' | 'm' | 'h' | 'd'}`,
+    });
+
+    const refreshExpiry = remember
+      ? (process.env.JWT_REFRESH_REMEMBER_IN || '30d')
+      : (process.env.JWT_REFRESH_EXPIRES_IN || '7d');
+
+    const refreshToken = crypto.randomBytes(48).toString('hex');
+    const refreshHash = this.hashToken(refreshToken);
+
+    const expiresAt = this.computeExpiry(refreshExpiry);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        refreshToken: refreshHash,
+        refreshTokenExpires: expiresAt,
+        refreshTokenCreatedAt: new Date(),
+      },
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  private async recordSession(userId: string, ctx: RequestContext) {
+    try {
+      await this.prisma.loginSession.create({
+        data: {
+          userId,
+          ipAddress: ctx.ipAddress?.slice(0, 45),
+          userAgent: ctx.userAgent?.slice(0, 500),
+          deviceLabel: ctx.deviceLabel?.slice(0, 100),
+        },
+      });
+    } catch (err) {
+      this.logger.error('Failed to record session:', err);
+    }
+  }
+
+  /**
+   * Fallback email sender when EmailModule isn't injected.
+   * Uses Resend SDK directly to avoid circular dependency.
+   */
+  private async sendEmailFallback(
+    to: string,
+    template: { subject: string; html: string; text: string },
+  ): Promise<void> {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      this.logger.warn(`Email skipped (no API key): to=${to}`);
+      return;
+    }
+
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.EMAIL_FROM || 'ShereheConnect <onboarding@resend.dev>',
+          to,
+          subject: template.subject,
+          html: template.html,
+          text: template.text,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        this.logger.error(`Email send failed: ${err}`);
+        return;
+      }
+
+      const data = (await res.json()) as { id?: string };
+      this.logger.log(`Email sent: ${data.id} → ${to}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      this.logger.error(`Email exception: ${msg}`);
+    }
+  }
+
+  private computeExpiry(expiry: string): Date {
+    const match = /^(\d+)([smhd])$/.exec(expiry);
+    if (!match) return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+    const multipliers: Record<string, number> = {
+      s: 1000,
+      m: 60 * 1000,
+      h: 60 * 60 * 1000,
+      d: 24 * 60 * 60 * 1000,
+    };
+    return new Date(Date.now() + value * multipliers[unit]);
+  }
+
   private generateOTP(): string {
     const digits = '0123456789';
     let otp = '';
@@ -410,12 +636,8 @@ export class AuthService {
     return otp;
   }
 
-  private hashOTP(otp: string): string {
-    return crypto.createHash('sha256').update(otp).digest('hex');
-  }
-
-  private async signToken(userId: string, email: string, role: string) {
-    return this.jwt.signAsync({ sub: userId, email, role });
+  private hashToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
   }
 
   private normalizePhone(phone: string): string {

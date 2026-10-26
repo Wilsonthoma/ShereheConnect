@@ -1,17 +1,14 @@
 import { ProtectedRoute } from '@/components/auth';
-import { Navbar, Footer } from '@/components/layout';
+import { TicketsContent } from '@/components/tickets/TicketsContent';
 
 export default function TicketsPage() {
   return (
     <ProtectedRoute>
-      <Navbar />
-      <main className="min-h-screen bg-light py-16 px-4">
+      <section className="min-h-screen bg-light dark:bg-slate-950 py-16 px-4 transition-colors">
         <div className="max-w-7xl mx-auto">
-          <h1 className="heading-display heading-md text-brand-gradient mb-6">My Tickets</h1>
-          <p className="text-gray">Your tickets will appear here.</p>
+          <TicketsContent />
         </div>
-      </main>
-      <Footer />
+      </section>
     </ProtectedRoute>
   );
 }

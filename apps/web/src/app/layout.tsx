@@ -1,8 +1,12 @@
+// src/app/layout.tsx
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import { Manrope, Kaushan_Script } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/lib/theme';
 import { ToastProvider } from '@/components/providers/ToastProvider';
+import { LanguageProvider } from '@/lib/i18n/LanguageContext';
+import { Navbar } from '@/components/layout/Navbar';
 
 const manrope = Manrope({
   subsets: ['latin'],
@@ -67,11 +71,21 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: themeInitScript }}
+        />
       </head>
-      <body className="antialiased min-h-screen">
+      <body className="antialiased min-h-screen bg-light dark:bg-slate-950 text-dark dark:text-slate-100">
         <ThemeProvider>
-          {children}
+          <LanguageProvider>
+            <Navbar />
+            {/* pt-* offsets the fixed navbar — no spacer div in Navbar needed */}
+            <main className="pt-16 md:pt-[70px] overflow-x-clip">
+              {children}
+            </main>
+          </LanguageProvider>
           <ToastProvider />
         </ThemeProvider>
       </body>
