@@ -59,6 +59,8 @@ export interface EventItem {
   status: EventStatus;
   rejectionReason?: string | null;
   maxAttendees?: number | null;
+  isFeatured?: boolean;
+  eventFeatures?: string[];
   category?: EventCategory | null;
   organizer?: EventOrganizer;
   ticketTiers?: TicketTier[];
@@ -89,6 +91,8 @@ export interface CreateEventPayload {
   startsAt: string;
   endsAt: string;
   maxAttendees?: number;
+  isFeatured?: boolean;
+  eventFeatures?: string[];
   ticketTiers: TicketTier[];
 }
 
@@ -105,6 +109,8 @@ export interface UpdateEventPayload {
   startsAt?: string;
   endsAt?: string;
   maxAttendees?: number;
+  isFeatured?: boolean;
+  eventFeatures?: string[];
   ticketTiers?: TicketTier[];
 }
 

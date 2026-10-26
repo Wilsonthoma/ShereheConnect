@@ -1,175 +1,88 @@
 'use client';
 
-import { useState } from 'react';
-import { UploadCloud, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { UploadCloud, X, Loader2 } from 'lucide-react';
 import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
-import { useLanguage } from '@/lib/i18n/LanguageContext';
 
-interface ImageUploaderProps {
-  value: string;
-  onChange: (url: string) => void;
-  label?: string;
-  aspect?: 'square' | 'video' | 'wide';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+async function compressImage(file: File, maxWidth = 1600, quality = 0.82): Promise<File> {
+  if (file.type === 'image/gif' || file.size < 300 * 1024) return file;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(file);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(file);
+        resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
 }
 
-const ASPECTS: Record<NonNullable<ImageUploaderProps['aspect']>, string> = {
-  square: 'aspect-square',
-  video: 'aspect-video',
-  wide: 'aspect-[16/7]',
-};
+export function ImageUploader({ value, onChange, label = 'Upload Image' }: any) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+  const handleFile = async (file: File) => {
+    if (!file.type.match(/^image\/(jpeg|png|webp|gif)$/)) return toast.error('Invalid file type', 'Only JPG, PNG, WebP allowed.');
+    if (file.size > 15 * 1024 * 1024) return toast.error('Too large', 'Max 15 MB.');
 
-export function ImageUploader({
-  value,
-  onChange,
-  label = 'Upload Image',
-  aspect = 'video',
-}: ImageUploaderProps) {
-  const { t } = useLanguage();
-
-  const tr = (key: string, fallback: string): string => {
-    const v = t(key as any);
-    return v === key ? fallback : v;
-  };
-
-  const [isUploading, setIsUploading] = useState(false);
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Quick client-side validation before hitting the API
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error(
-        tr('imageUploader.tooLargeTitle', 'Image too large'),
-        tr(
-          'imageUploader.tooLargeBody',
-          'Please choose an image under 5 MB.',
-        ),
-      );
-      return;
-    }
-    if (!file.type.match(/^image\/(jpeg|png|webp|gif)$/)) {
-      toast.error(
-        tr('imageUploader.badTypeTitle', 'Invalid file type'),
-        tr(
-          'imageUploader.badTypeBody',
-          'Only JPG, PNG, WebP, or GIF are allowed.',
-        ),
-      );
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    setIsUploading(true);
+    setUploading(true);
     try {
-      const token = getToken();
-      // Use native fetch because our api client sets JSON headers
+      const compressed = await compressImage(file);
+      const formData = new FormData();
+      formData.append('file', compressed);
+
       const res = await fetch(`${API_URL}/uploads`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${getToken()}` },
         body: formData,
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message ?? 'Upload failed');
-      }
-
+      if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
-      // Backend returns `/uploads/file-xxx.jpg` — prefix with API_URL
-      // so it works when frontend and API run on different hosts
-      const fullUrl = data.url.startsWith('http')
-        ? data.url
-        : `${API_URL}${data.url}`;
-
-      onChange(fullUrl);
-      toast.success(
-        tr('imageUploader.successTitle', 'Image uploaded'),
-        tr('imageUploader.successBody', 'Your image is ready to use.'),
-      );
+      onChange(data.url.startsWith('http') ? data.url : `${API_URL}${data.url}`);
+      toast.success('Image uploaded');
     } catch (err: any) {
-      toast.error(
-        tr('imageUploader.errorTitle', 'Upload failed'),
-        err?.message ?? 'Something went wrong',
-      );
+      toast.error('Upload failed', err.message);
     } finally {
-      setIsUploading(false);
-      // Reset the input so the same file can be re-selected
-      e.target.value = '';
+      setUploading(false);
     }
   };
 
   return (
-    <div>
-      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5 transition-colors">
-        {label}
-      </label>
-
+    <div className="w-full max-w-md">
+      {label && <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5">{label}</label>}
       {value ? (
-        <div
-          className={`relative w-full ${ASPECTS[aspect]} rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group`}
-        >
-          <img
-            src={value}
-            alt="Uploaded preview"
-            className="w-full h-full object-cover"
-          />
-          <button
-            type="button"
-            onClick={() => onChange('')}
-            className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-black text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-            aria-label={tr('imageUploader.remove', 'Remove image')}
-          >
-            <X className="w-4 h-4" />
-          </button>
+        <div className="relative w-full h-48 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
+          <img src={value} alt="Preview" className="w-full h-full object-cover" />
+          <button onClick={() => onChange('')} className="absolute top-2 right-2 p-1.5 bg-black/70 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-4 h-4" /></button>
         </div>
       ) : (
-        <label
-          className="
-            flex flex-col items-center justify-center
-            w-full h-32
-            border-2 border-dashed border-slate-300 dark:border-slate-700
-            rounded-xl
-            cursor-pointer
-            hover:bg-slate-50 dark:hover:bg-slate-800/50
-            transition-colors
-          "
-        >
-          <div className="flex flex-col items-center justify-center">
-            <UploadCloud
-              className={`w-8 h-8 mb-2 ${
-                isUploading
-                  ? 'text-gold animate-bounce'
-                  : 'text-slate-400 dark:text-slate-500'
-              }`}
-            />
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {isUploading
-                ? tr('imageUploader.uploading', 'Uploading...')
-                : tr('imageUploader.clickToUpload', 'Click to upload image')}
-            </p>
-            <p className="text-[0.65rem] text-slate-400 dark:text-slate-500 mt-1">
-              {tr(
-                'imageUploader.hint',
-                'JPG, PNG, WebP — max 5 MB',
-              )}
-            </p>
-          </div>
-          <input
-            type="file"
-            className="hidden"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            onChange={handleUpload}
-            disabled={isUploading}
-          />
-        </label>
+        <div onClick={() => inputRef.current?.click()} className="flex flex-col items-center justify-center gap-2 w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl cursor-pointer hover:border-gold transition-colors">
+          {uploading ? <Loader2 className="w-6 h-6 text-gold animate-spin" /> : <UploadCloud className="w-6 h-6 text-slate-400" />}
+          <p className="text-xs text-slate-500">{uploading ? 'Uploading...' : 'Click to upload'}</p>
+        </div>
       )}
+      <input ref={inputRef} type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} className="hidden" />
     </div>
   );
 }

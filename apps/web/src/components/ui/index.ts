@@ -15,4 +15,4 @@ export { ThemeToggle } from './ThemeToggle';
 export { FullPageLoader, SectionLoader, Spinner, PageSkeleton } from './Loader';
 export { VerifyOtpInput } from './VerifyOtpInput';
 export { ScrollFlipbook } from './ScrollFlipbook';
-export { ImageUploader } from './ImageUploader';
+export { ImageUploader } from './ImageUploader';export { EventImage } from './EventImage';

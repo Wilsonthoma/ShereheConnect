@@ -1,9 +1,18 @@
 /**
  * ShereheConnect — API Client
- * Centralized HTTP client for all backend calls.
+ * Centralized HTTP client with automatic token refresh on 401.
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+import {
+  getToken,
+  isTokenExpired,
+  refreshAccessToken,
+  clearAuth,
+  getRefreshToken,
+} from './auth';
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 export interface ApiError {
   message: string;
@@ -20,24 +29,82 @@ export class ApiException extends Error {
   }
 }
 
+/* ============================================
+   CORE REQUEST — with 401 refresh + retry
+   ============================================ */
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
   token?: string | null,
+  isRetry = false,
 ): Promise<T> {
+  // Proactively refresh if the token is about to expire
+  let effectiveToken = token ?? null;
+
+  if (
+    effectiveToken &&
+    !isRetry &&
+    isTokenExpired(effectiveToken) &&
+    getRefreshToken()
+  ) {
+    const fresh = await refreshAccessToken();
+    if (fresh) effectiveToken = fresh;
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  if (effectiveToken) {
+    headers['Authorization'] = `Bearer ${effectiveToken}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    throw new ApiException(
+      err?.message ?? 'Network error — please check your connection.',
+      0,
+    );
+  }
+
+  // ============================================
+  // Handle 401 — try to refresh, then retry ONCE
+  // ============================================
+  if (response.status === 401 && !isRetry && getRefreshToken()) {
+    const fresh = await refreshAccessToken();
+    if (fresh) {
+      return request<T>(path, options, fresh, true);
+    }
+    // Refresh failed → clean logout
+    handleSessionExpired();
+    throw new ApiException(
+      'Your session expired. Please log in again.',
+      401,
+    );
+  }
+
+  // If we still got a 401 on a protected route with no refresh available
+  if (response.status === 401 && !isRetry) {
+    // Do NOT auto-logout for public endpoints — just throw
+    // If token was provided, that means it was a protected call
+    if (token) {
+      handleSessionExpired();
+    }
+    const data = await response.json().catch(() => ({}));
+    const message =
+      data?.message ?? data?.error ?? 'Unauthorized';
+    throw new ApiException(
+      Array.isArray(message) ? message.join(', ') : message,
+      401,
+    );
+  }
 
   const data = await response.json().catch(() => ({}));
 
@@ -54,6 +121,23 @@ async function request<T>(
 
   return data as T;
 }
+
+function handleSessionExpired() {
+  if (typeof window === 'undefined') return;
+  clearAuth();
+  // Broadcast event so Navbar and others can react immediately
+  window.dispatchEvent(new Event('sherehe:auth-expired'));
+
+  // Redirect to login with a return path and an expired flag
+  const path = window.location.pathname;
+  if (!path.startsWith('/login') && !path.startsWith('/register')) {
+    window.location.href = `/login?expired=1&next=${encodeURIComponent(path)}`;
+  }
+}
+
+/* ============================================
+   PUBLIC api object (unchanged API surface)
+   ============================================ */
 
 export const api = {
   get: <T>(path: string, token?: string | null) =>
@@ -89,6 +173,7 @@ export interface AuthUserResponse {
 export interface LoginResponse {
   user: AuthUserResponse;
   accessToken: string;
+  refreshToken?: string;
 }
 
 export interface RegisterResponse extends LoginResponse {
@@ -108,11 +193,16 @@ export const authApi = {
   }) => api.post<RegisterResponse>('/auth/register', data),
 
   me: (token: string) => api.get<AuthUserResponse>('/auth/me', token),
+
+  refresh: (refreshToken: string) =>
+    api.post<{ accessToken: string; refreshToken?: string }>(
+      '/auth/refresh',
+      { refreshToken },
+    ),
 };
 
 /* ============================================
    EXTENDED AUTH API
-   Password reset, change password, verify email
    ============================================ */
 
 export const extendedAuthApi = {
@@ -128,7 +218,11 @@ export const extendedAuthApi = {
   resetPassword: (token: string, password: string) =>
     api.post<{ message: string }>('/auth/reset-password', { token, password }),
 
-  changePassword: (currentPassword: string, newPassword: string, token: string) =>
+  changePassword: (
+    currentPassword: string,
+    newPassword: string,
+    token: string,
+  ) =>
     api.post<{ message: string }>(
       '/auth/change-password',
       { currentPassword, newPassword },

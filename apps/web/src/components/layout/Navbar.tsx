@@ -44,18 +44,33 @@ export function Navbar() {
 
   const isLandingPage = pathname === '/';
 
-  /* ---------- Auth sync ---------- */
+  /* ============================================
+     AUTH SYNC — poll every 60s + react to expiry event
+  ============================================ */
   useEffect(() => {
     const sync = () => {
       setLoggedIn(isLoggedIn());
       setUser(getUser());
     };
+
+    // Initial state
     sync();
+
+    // Focus + cross-tab storage sync
     window.addEventListener('focus', sync);
     window.addEventListener('storage', sync);
+
+    // When the API client detects an expired session → update immediately
+    window.addEventListener('sherehe:auth-expired', sync);
+
+    // Periodic poll — catches silent expiry while idle
+    const interval = setInterval(sync, 60_000);
+
     return () => {
+      clearInterval(interval);
       window.removeEventListener('focus', sync);
       window.removeEventListener('storage', sync);
+      window.removeEventListener('sherehe:auth-expired', sync);
     };
   }, []);
 
@@ -836,7 +851,7 @@ export function Navbar() {
 }
 
 /* ============================================
-   MobileAccordion — full-width collapsible
+   MobileAccordion
    ============================================ */
 function MobileAccordion({
   label,
@@ -870,7 +885,7 @@ function MobileAccordion({
 }
 
 /* ============================================
-   MobileLink — flat link inside accordion
+   MobileLink
    ============================================ */
 function MobileLink({
   href,
