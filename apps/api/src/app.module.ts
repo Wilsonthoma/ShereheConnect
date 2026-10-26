@@ -5,6 +5,8 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { EmailModule } from './email';
 import { AuthModule } from './auth/auth.module';
+import { EventsModule } from './events/events.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { AuthModule } from './auth/auth.module';
     PrismaModule,
     EmailModule,
     AuthModule,
+    EventsModule,
+    UploadsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

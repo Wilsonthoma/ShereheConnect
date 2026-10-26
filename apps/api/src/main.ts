@@ -1,9 +1,27 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Use NestExpressApplication so we can configure static assets
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // ============================================
+  // SERVE UPLOADED IMAGES AS STATIC FILES
+  //
+  // Uploads are stored at apps/api/uploads/
+  // They become accessible at:
+  //   http://localhost:4000/uploads/<filename>
+  //
+  // __dirname at runtime = apps/api/dist (when built)
+  // __dirname at runtime = apps/api/src (when running via ts-node)
+  // So we go up one level to reach apps/api/uploads/
+  // ============================================
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({

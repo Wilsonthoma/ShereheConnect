@@ -342,6 +342,7 @@ export class AuthService {
     }
 
     const otp = this.generateOTP();
+    console.log(`\n\n🔑 DEV OTP CODE: ${otp}\n\n`);
     const otpHash = this.hashToken(otp);
     const expires = new Date(Date.now() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
 

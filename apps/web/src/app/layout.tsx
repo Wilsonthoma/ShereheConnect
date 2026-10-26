@@ -1,4 +1,3 @@
-// src/app/layout.tsx
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import { Manrope, Kaushan_Script } from 'next/font/google';
@@ -6,7 +5,6 @@ import './globals.css';
 import { ThemeProvider } from '@/lib/theme';
 import { ToastProvider } from '@/components/providers/ToastProvider';
 import { LanguageProvider } from '@/lib/i18n/LanguageContext';
-import { Navbar } from '@/components/layout/Navbar';
 
 const manrope = Manrope({
   subsets: ['latin'],
@@ -34,16 +32,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: 'ShereheConnect — Discover Events Across Kenya',
-  description:
-    'Find, book, and attend events near you. From festivals to conferences, connect with the experiences that matter.',
-  keywords: ['events', 'tickets', 'Kenya', 'Nairobi', 'festivals', 'conferences', 'M-Pesa'],
-  authors: [{ name: 'ShereheConnect' }],
-  openGraph: {
-    title: 'ShereheConnect — Discover Events Across Kenya',
-    description: 'Find, book, and attend events near you.',
-    type: 'website',
-    locale: 'en_KE',
-  },
+  description: 'Find, book, and attend events near you.',
 };
 
 const themeInitScript = `
@@ -80,11 +69,7 @@ export default function RootLayout({
       <body className="antialiased min-h-screen bg-light dark:bg-slate-950 text-dark dark:text-slate-100">
         <ThemeProvider>
           <LanguageProvider>
-            <Navbar />
-            {/* pt-* offsets the fixed navbar — no spacer div in Navbar needed */}
-            <main className="pt-16 md:pt-[70px] overflow-x-clip">
-              {children}
-            </main>
+            {children}
           </LanguageProvider>
           <ToastProvider />
         </ThemeProvider>

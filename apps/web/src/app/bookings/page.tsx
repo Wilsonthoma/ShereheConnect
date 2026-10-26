@@ -1,17 +1,20 @@
-import { ProtectedRoute } from '@/components/auth';
+'use client';
+
 import { Navbar, Footer } from '@/components/layout';
-import { BookingsContent } from '@/components/bookings/BookingsContent';
 
 export default function BookingsPage() {
   return (
-    <ProtectedRoute>
+    <>
       <Navbar />
-      <main className="min-h-screen bg-light dark:bg-slate-950 py-16 px-4 transition-colors">
-        <div className="max-w-7xl mx-auto">
-          <BookingsContent />
+      <main className="min-h-screen bg-light dark:bg-slate-950 py-12">
+        <div className="container-fluid">
+          <h1 className="heading-display heading-md text-brand-gradient mb-6">
+            My Bookings
+          </h1>
+          <p className="text-gray">Bookings page — coming soon.</p>
         </div>
       </main>
       <Footer />
-    </ProtectedRoute>
+    </>
   );
 }

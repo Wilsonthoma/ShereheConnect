@@ -1,5 +1,6 @@
 export * from './auth';
 export * from './api';
+export * from './eventsApi';
 export * from './breakpoints';
 export * from './useResponsive';
 export * from './useAuth';
