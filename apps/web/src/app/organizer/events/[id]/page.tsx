@@ -131,8 +131,12 @@ export default function OrganizerEventDetailPage() {
   const canDelete = event.status === 'DRAFT';
   const hasAttendees = (event._count?.bookings ?? 0) > 0;
 
+  const totalSold = event.ticketTiers?.reduce((s, t) => s + (t.quantitySold || 0), 0) || 0;
+  const totalCapacity = event.ticketTiers?.reduce((s, t) => s + (t.quantityTotal || 0), 0) || 0;
+
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6">
+      {/* Back */}
       <button
         onClick={() => router.push('/organizer/events')}
         className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-gold transition-colors"
@@ -141,89 +145,24 @@ export default function OrganizerEventDetailPage() {
         Back to My Events
       </button>
 
-      {/* Cover + header container */}
-      <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-        <div className="relative max-h-[300px] md:max-h-[400px] overflow-hidden">
-          <EventImage
-            src={event.coverImageUrl}
-            alt={event.title}
-            variant="banner"
-            className="w-full object-cover"
-          />
-          <div className="absolute top-4 right-4">
-            <span className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider shadow-md ${STATUS_STYLES[event.status] || STATUS_STYLES.DRAFT}`}>
-              {event.status.replace('_', ' ')}
-            </span>
-          </div>
-        </div>
-
-        <div className="p-6 md:p-8">
-          <h1 className="heading-display text-2xl md:text-3xl text-slate-800 dark:text-slate-100 mb-4">
-            {event.title}
-          </h1>
-
-          {/* Clean metadata without emojis */}
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500 dark:text-slate-400 mb-6">
-            <span>{event.venueName}, {event.county}</span>
-            <span className="hidden sm:inline text-slate-300 dark:text-slate-600">|</span>
-            <span>{dateStr}</span>
-            <span className="hidden sm:inline text-slate-300 dark:text-slate-600">|</span>
-            <span>{timeStr}</span>
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-wrap gap-2">
-            {canEditOrSubmit && (
-              <>
-                <Link
-                  href={`/organizer/events/${event.id}/edit`}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                >
-                  Edit Event
-                </Link>
-                <button
-                  onClick={handleSubmitForApproval}
-                  disabled={busy === 'submit'}
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 disabled:transform-none transition-all"
-                >
-                  {busy === 'submit' ? 'Submitting...' : 'Submit for Approval'}
-                </button>
-              </>
-            )}
-
-            {canCancel && (
-              <button
-                onClick={handleCancel}
-                disabled={busy === 'cancel'}
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 text-sm font-semibold hover:bg-amber-500 hover:text-white disabled:opacity-50 transition-colors"
-              >
-                {busy === 'cancel' ? 'Cancelling...' : 'Cancel Event'}
-              </button>
-            )}
-
-            {canDelete && (
-              <button
-                onClick={handleDelete}
-                disabled={busy === 'delete'}
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-500 hover:text-white disabled:opacity-50 transition-colors"
-              >
-                {busy === 'delete' ? 'Deleting...' : 'Delete Draft'}
-              </button>
-            )}
-
-            {hasAttendees && (
-              <Link
-                href={`/organizer/events/${event.id}/attendees`}
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              >
-                View Attendees ({event._count?.bookings})
-              </Link>
-            )}
-          </div>
-        </div>
+      {/* ===== TITLE + STATUS ROW (event-title-section) ===== */}
+      <div className="flex justify-between items-start flex-wrap gap-3">
+        <h1 className="heading-display text-2xl md:text-3xl text-slate-800 dark:text-slate-100 flex-1 min-w-0">
+          {event.title}
+        </h1>
+        <span className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider shrink-0 ${STATUS_STYLES[event.status] || STATUS_STYLES.DRAFT}`}>
+          {event.status.replace('_', ' ')}
+        </span>
       </div>
 
-      {/* Admin feedback / Cancellation */}
+      {/* ===== META ROW (event-meta) ===== */}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500 dark:text-slate-400 pb-4 border-b border-slate-200 dark:border-slate-800">
+        <span>{event.venueName}, {event.county}</span>
+        <span>{dateStr}</span>
+        <span>{timeStr}</span>
+      </div>
+
+      {/* ===== ADMIN FEEDBACK / CANCELLATION ===== */}
       {event.status === 'NEEDS_REVISION' && event.rejectionReason && (
         <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-2xl p-5">
           <div>
@@ -242,57 +181,137 @@ export default function OrganizerEventDetailPage() {
         </div>
       )}
 
-      {/* Description */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 md:p-8">
-        <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-3">About This Event</h2>
-        <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap">
-          {event.description}
-        </p>
-      </div>
+      {/* ===== TWO-COLUMN GRID (event-content-wrapper) ===== */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 lg:gap-8 items-start">
 
-      {/* Ticket tiers */}
-      {event.ticketTiers && event.ticketTiers.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 md:p-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">Ticket Tiers</h2>
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              {event.ticketTiers.reduce((s, t) => s + (t.quantitySold || 0), 0)} sold / {event.ticketTiers.reduce((s, t) => s + (t.quantityTotal || 0), 0)} total
+        {/* ===== MAIN COLUMN ===== */}
+        <div className="space-y-6 min-w-0">
+
+          {/* Cover image */}
+          <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+            <div className="relative max-h-[300px] md:max-h-[400px] overflow-hidden">
+              <EventImage
+                src={event.coverImageUrl}
+                alt={event.title}
+                variant="banner"
+                className="w-full object-cover"
+              />
             </div>
           </div>
 
-          <div className="space-y-3">
-            {event.ticketTiers.map((tier) => {
-              const remaining = (tier.quantityTotal || 0) - (tier.quantitySold || 0);
-              return (
-                <div key={tier.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{tier.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{remaining} remaining · {tier.quantitySold || 0} sold</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-gold">{tier.priceKes === 0 ? 'Free' : `KES ${tier.priceKes.toLocaleString()}`}</p>
-                  </div>
-                </div>
-              );
-            })}
+          {/* Description card */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 md:p-8">
+            <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-3">About This Event</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap">
+              {event.description}
+            </p>
           </div>
-        </div>
-      )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Max Attendees</p>
-          <p className="font-bold text-slate-800 dark:text-slate-100">{event.maxAttendees ? String(event.maxAttendees) : 'Unlimited'}</p>
+          {/* Ticket tiers card */}
+          {event.ticketTiers && event.ticketTiers.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 md:p-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">Ticket Tiers</h2>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  {totalSold} sold / {totalCapacity} total
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {event.ticketTiers.map((tier) => {
+                  const remaining = (tier.quantityTotal || 0) - (tier.quantitySold || 0);
+                  return (
+                    <div key={tier.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{tier.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{remaining} remaining · {tier.quantitySold || 0} sold</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-bold text-gold">{tier.priceKes === 0 ? 'Free' : `KES ${tier.priceKes.toLocaleString()}`}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Tickets Sold</p>
-          <p className="font-bold text-slate-800 dark:text-slate-100">{event.ticketTiers?.reduce((s, t) => s + (t.quantitySold || 0), 0) || 0}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Created</p>
-          <p className="font-bold text-slate-800 dark:text-slate-100">{new Date(event.createdAt!).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-        </div>
+
+        {/* ===== STICKY SIDEBAR (event-sidebar) ===== */}
+        <aside className="lg:sticky lg:top-24 h-fit space-y-4">
+
+          {/* Actions block (ticket-card style) */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-2">
+            <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100 mb-3">Actions</h3>
+
+            {canEditOrSubmit && (
+              <>
+                <Link
+                  href={`/organizer/events/${event.id}/edit`}
+                  className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Edit Event
+                </Link>
+                <button
+                  onClick={handleSubmitForApproval}
+                  disabled={busy === 'submit'}
+                  className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 disabled:transform-none transition-all"
+                >
+                  {busy === 'submit' ? 'Submitting...' : 'Submit for Approval'}
+                </button>
+              </>
+            )}
+
+            {canCancel && (
+              <button
+                onClick={handleCancel}
+                disabled={busy === 'cancel'}
+                className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 text-sm font-semibold hover:bg-amber-500 hover:text-white disabled:opacity-50 transition-colors"
+              >
+                {busy === 'cancel' ? 'Cancelling...' : 'Cancel Event'}
+              </button>
+            )}
+
+            {canDelete && (
+              <button
+                onClick={handleDelete}
+                disabled={busy === 'delete'}
+                className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-500 hover:text-white disabled:opacity-50 transition-colors"
+              >
+                {busy === 'delete' ? 'Deleting...' : 'Delete Draft'}
+              </button>
+            )}
+
+            {hasAttendees && (
+              <Link
+                href={`/organizer/events/${event.id}/attendees`}
+                className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                View Attendees ({event._count?.bookings})
+              </Link>
+            )}
+          </div>
+
+          {/* Stats block */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5">
+            <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100 mb-3">Overview</h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Max Attendees</span>
+                <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{event.maxAttendees ? String(event.maxAttendees) : 'Unlimited'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Tickets Sold</span>
+                <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{totalSold}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Created</span>
+                <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{new Date(event.createdAt!).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              </div>
+            </div>
+          </div>
+
+        </aside>
       </div>
     </div>
   );
