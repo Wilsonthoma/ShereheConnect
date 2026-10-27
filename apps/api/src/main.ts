@@ -2,26 +2,32 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  // Use NestExpressApplication so we can configure static assets
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // ============================================
-  // SERVE UPLOADED IMAGES AS STATIC FILES
-  //
-  // Uploads are stored at apps/api/uploads/
-  // They become accessible at:
-  //   http://localhost:4000/uploads/<filename>
-  //
-  // __dirname at runtime = apps/api/dist (when built)
-  // __dirname at runtime = apps/api/src (when running via ts-node)
-  // So we go up one level to reach apps/api/uploads/
+  // Resolve the uploads directory robustly
   // ============================================
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
-    prefix: '/uploads/',
-  });
+  // Try several candidate paths, use the first one that exists.
+  // This works regardless of whether the app runs from src/ or dist/.
+  const candidates = [
+    join(process.cwd(), 'uploads'),                 // when run from apps/api
+    join(__dirname, '..', 'uploads'),               // when built to dist/
+    join(__dirname, '..', '..', 'uploads'),         // when built nested
+  ];
+  const uploadsDir = candidates.find((p) => existsSync(p)) ?? candidates[0];
+
+  // Ensure the folder exists so Multer doesn't throw on first upload
+  if (!existsSync(uploadsDir)) {
+    mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  console.log('📁 Static uploads served from:', uploadsDir);
+
+  app.useStaticAssets(uploadsDir, { prefix: '/uploads/' });
 
   app.useGlobalPipes(
     new ValidationPipe({

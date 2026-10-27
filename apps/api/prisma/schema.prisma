@@ -131,6 +131,7 @@ model User {
   fullName       String     @map("full_name") @db.VarChar(200)
   role           UserRole   @default(ATTENDEE)
   status         UserStatus @default(ACTIVE)
+  suspensionReason String?  @map("suspension_reason") @db.Text
 
   emailVerified  Boolean    @default(false) @map("email_verified")
   phoneVerified  Boolean    @default(false) @map("phone_verified")
@@ -183,6 +184,7 @@ model OrganizerProfile {
   bio              String?       @db.Text
   logoUrl          String?       @map("logo_url") @db.Text
   phone            String?       @db.VarChar(20)
+  kraPin           String?       @map("kra_pin") @db.VarChar(20)
 
   organizerType    OrganizerType @default(INDIVIDUAL) @map("organizer_type")
   county           String        @db.VarChar(100)
@@ -191,6 +193,7 @@ model OrganizerProfile {
   kycReviewedBy    String?       @map("kyc_reviewed_by") @db.Uuid
   kycReviewedAt    DateTime?     @map("kyc_reviewed_at") @db.Timestamptz
   kycNotes         String?       @map("kyc_notes")
+  suspensionReason String?       @map("suspension_reason") @db.Text
   averageRating    Decimal       @default(0) @map("average_rating") @db.Decimal(3, 2)
   completedEvents  Int           @default(0) @map("completed_events")
   disputeCount     Int           @default(0) @map("dispute_count")
@@ -313,6 +316,7 @@ model Event {
   rejectionReason String?     @map("rejection_reason")
   maxAttendees    Int?        @map("max_attendees")
   isFeatured      Boolean     @default(false) @map("is_featured")
+  eventFeatures   Json        @default("[]") @map("event_features")
   createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz
 

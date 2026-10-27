@@ -1,47 +1,30 @@
 import {
-  IsString,
-  IsOptional,
-  IsISO8601,
-  IsInt,
-  IsArray,
-  ValidateNested,
-  MaxLength,
-  Min,
-  ArrayMinSize,
+  IsString, IsOptional, IsISO8601, IsInt, IsArray,
+  ValidateNested, MaxLength, Min, ArrayMinSize, IsBoolean
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TicketTierDto } from './ticket-tier.dto';
 
 export class CreateEventDto {
-  @IsString()
-  @MaxLength(300)
+  @IsString() @MaxLength(300)
   title: string;
 
   @IsString()
   description: string;
 
-  /**
-   * Category CODE (e.g. "FESTIVAL"), not a UUID.
-   * The service resolves it to the real categoryId internally.
-   */
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
+  @IsOptional() @IsString() @MaxLength(50)
   categoryId?: string;
 
-  @IsOptional()
-  @IsString()
+  @IsOptional() @IsString()
   coverImageUrl?: string;
 
-  @IsString()
-  @MaxLength(200)
+  @IsString() @MaxLength(200)
   venueName: string;
 
   @IsString()
   address: string;
 
-  @IsString()
-  @MaxLength(100)
+  @IsString() @MaxLength(100)
   county: string;
 
   @IsOptional()
@@ -56,14 +39,15 @@ export class CreateEventDto {
   @IsISO8601()
   endsAt: string;
 
-  @IsOptional()
-  @IsInt()
-  @Min(1)
+  @IsOptional() @IsInt() @Min(1)
   maxAttendees?: number;
 
-  @IsArray()
-  @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => TicketTierDto)
+  @IsOptional() @IsBoolean()
+  isFeatured?: boolean;
+
+  @IsOptional() @IsArray() @IsString({ each: true })
+  eventFeatures?: string[];
+
+  @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => TicketTierDto)
   ticketTiers: TicketTierDto[];
 }

@@ -4,9 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Eye,
-  AlertCircle,
   CheckCircle2,
-  Clock,
 } from 'lucide-react';
 import { adminEventsApi, EventItem, EventStatus } from '@/lib/eventsApi';
 import { getToken } from '@/lib/auth';
@@ -152,13 +150,14 @@ function AdminEventRow({
   return (
     <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
       <div className="flex flex-col md:flex-row md:items-center gap-4">
+        
         {/* Thumbnail */}
         <div className="shrink-0">
           <EventImage
             src={event.coverImageUrl}
             alt={event.title}
             variant="thumbnail"
-            className="w-20 h-20 sm:w-24 sm:h-24"
+            className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl"
           />
         </div>
 
@@ -179,19 +178,19 @@ function AdminEventRow({
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
             By <strong>{event.organizer?.businessName || 'Unknown organizer'}</strong>
           </p>
-          <div className="flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
-            <span>📍 {event.venueName}, {event.county}</span>
-            <span>📅 {dateStr}</span>
+          
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
+            <span>{event.venueName}, {event.county}</span>
+            <span>{dateStr}</span>
             {event.ticketTiers && event.ticketTiers.length > 0 && (
               <span>
-                🎟️ {event.ticketTiers.length} tier
+                {event.ticketTiers.length} tier
                 {event.ticketTiers.length !== 1 ? 's' : ''}
               </span>
             )}
             {event.submittedAt && (
               <span>
-                🕐 Submitted{' '}
-                {new Date(event.submittedAt).toLocaleDateString(
+                Submitted {new Date(event.submittedAt).toLocaleDateString(
                   language === 'sw' ? 'sw-KE' : 'en-KE',
                 )}
               </span>
@@ -203,12 +202,13 @@ function AdminEventRow({
         <div className="shrink-0">
           <Link
             href={`/admin/events/${event.id}`}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-gradient text-white text-xs font-semibold hover:-translate-y-0.5 hover:shadow-md transition-all"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             <Eye className="w-3.5 h-3.5" />
             Review
           </Link>
         </div>
+        
       </div>
     </div>
   );

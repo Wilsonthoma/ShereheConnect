@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { EventsService } from './events.service';
 import { EventsController } from './events.controller';
 import { OrganizerEventsService } from './organizer-events.service';
@@ -7,6 +8,7 @@ import { AdminEventsService } from './admin-events.service';
 import { AdminEventsController } from './admin-events.controller';
 
 @Module({
+  imports: [NotificationsModule],
   controllers: [
     EventsController,
     OrganizerEventsController,

@@ -1,10 +1,10 @@
 'use client';
 
-import { Menu, Bell, Search } from 'lucide-react';
+import { Menu, Search } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { useAuth } from '@/lib/useAuth';
+import { NotificationBell } from '@/components/shared/NotificationBell';
 
 interface OrganizerTopbarProps {
   onOpenSidebar?: () => void;
@@ -25,7 +25,6 @@ const PAGE_TITLES: Record<string, string> = {
 export function OrganizerTopbar({ onOpenSidebar }: OrganizerTopbarProps) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const getTitle = () => {
     if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
@@ -64,42 +63,8 @@ export function OrganizerTopbar({ onOpenSidebar }: OrganizerTopbarProps) {
             />
           </div>
 
+          <NotificationBell />
           <ThemeToggle />
-
-          {/* Notifications */}
-          <div className="relative">
-            <button
-              onClick={() => setNotificationsOpen(!notificationsOpen)}
-              className="relative w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:text-gold hover:bg-black/5 dark:text-slate-400 dark:hover:text-gold dark:hover:bg-white/5 transition-all"
-              aria-label="Notifications"
-            >
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red rounded-full" />
-            </button>
-            {notificationsOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setNotificationsOpen(false)}
-                />
-                <div className="absolute top-full right-0 mt-2 w-80 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                      Notifications
-                    </h4>
-                    <button className="text-xs text-gold hover:underline">
-                      Mark all read
-                    </button>
-                  </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    <div className="px-4 py-8 text-center text-sm text-slate-400">
-                      No notifications yet
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
         </div>
       </div>
     </header>

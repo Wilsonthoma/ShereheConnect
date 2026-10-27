@@ -1,0 +1,93 @@
+import { api } from './api';
+import { getToken } from './auth';
+
+export type OrganizerType = 'INDIVIDUAL' | 'BUSINESS' | 'NGO';
+export type KycStatus = 'PENDING' | 'VERIFIED' | 'REJECTED' | 'NEEDS_REVISION';
+export type PaymentMethodType = 'PAYBILL' | 'TILL' | 'POCHI' | 'SEND_MONEY';
+export type KycDocType = 'BUSINESS_PERMIT' | 'NATIONAL_ID' | 'OTHER';
+
+export interface KycDocument {
+  type: KycDocType;
+  url: string;
+  fileName: string;
+}
+
+export interface OrganizerPaymentMethod {
+  id: string;
+  methodType: PaymentMethodType;
+  shortcode: string | null;
+  accountNumber: string | null;
+  phoneNumber: string | null;
+  displayLabel: string | null;
+  c2bRegistered: boolean;
+  isActive: boolean;
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export interface OrganizerProfile {
+  id: string;
+  userId: string;
+  businessName: string;
+  bio: string | null;
+  logoUrl: string | null;
+  phone: string | null;
+  kraPin: string | null;
+  organizerType: OrganizerType;
+  county: string;
+  kycStatus: KycStatus;
+  kycNotes: string | null;
+  kycReviewedAt: string | null;
+  kycDocuments: KycDocument[] | null;
+  averageRating: string | number;
+  completedEvents: number;
+  disputeCount: number;
+  createdAt: string;
+  updatedAt: string;
+  submitted: boolean;
+  paymentMethods: OrganizerPaymentMethod[];
+  activeSubscription: any | null;
+}
+
+export interface SubmitProfileInput {
+  businessName: string;
+  organizerType: OrganizerType;
+  county: string;
+  bio?: string;
+  logoUrl?: string;
+  phone: string;
+  kraPin: string;
+  kycDocuments: KycDocument[];
+}
+
+export interface AddPaymentMethodInput {
+  methodType: PaymentMethodType;
+  shortcode?: string;
+  accountNumber?: string;
+  phoneNumber?: string;
+  displayLabel?: string;
+}
+
+function token(): string | null {
+  return getToken();
+}
+
+export const organizerApi = {
+  getProfile: () =>
+    api.get<OrganizerProfile>('/organizer/profile', token()),
+
+  submitProfile: (dto: SubmitProfileInput) =>
+    api.post<OrganizerProfile>('/organizer/profile/submit', dto, token()),
+
+  listPaymentMethods: () =>
+    api.get<OrganizerPaymentMethod[]>('/organizer/payment-methods', token()),
+
+  addPaymentMethod: (dto: AddPaymentMethodInput) =>
+    api.post<OrganizerPaymentMethod>('/organizer/payment-methods', dto, token()),
+
+  deletePaymentMethod: (id: string) =>
+    api.delete<{ success: boolean }>(
+      `/organizer/payment-methods/${id}`,
+      token(),
+    ),
+};

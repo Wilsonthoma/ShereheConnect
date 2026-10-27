@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { EventFilterDto } from './dto/event-filter.dto';
 import { ReviewEventDto, ReviewAction } from './dto/review-event.dto';
 
@@ -12,7 +13,10 @@ import { ReviewEventDto, ReviewAction } from './dto/review-event.dto';
 export class AdminEventsService {
   private readonly logger = new Logger(AdminEventsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   /** List events awaiting approval (default) or all events */
   async list(filter: EventFilterDto) {
@@ -86,7 +90,12 @@ export class AdminEventsService {
   async review(adminId: string, eventId: string, dto: ReviewEventDto) {
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      select: { status: true, submittedAt: true },
+      select: { 
+        status: true, 
+        submittedAt: true,
+        title: true,
+        organizer: { select: { userId: true } }
+      },
     });
     if (!event) throw new NotFoundException('Event not found');
 
@@ -130,6 +139,30 @@ export class AdminEventsService {
     });
 
     this.logger.log(`Event ${eventId} reviewed: ${dto.action} by ${adminId}`);
+
+    // Notify the organizer
+    if (event.organizer?.userId) {
+      const titleMap = {
+        APPROVED: 'Event Approved',
+        REJECTED: 'Event Rejected',
+        REQUESTED_CHANGES: 'Event Changes Requested',
+      };
+      
+      const msgMap = {
+        APPROVED: `Your event "${event.title}" is now LIVE and visible to attendees!`,
+        REJECTED: `Your event "${event.title}" was rejected. Reason: ${dto.rejectionReason || 'No reason provided'}`,
+        REQUESTED_CHANGES: `Changes are needed for "${event.title}". Reason: ${dto.notes || 'Please check details'}`,
+      };
+
+      await this.notifications.create({
+        userId: event.organizer.userId,
+        title: titleMap[dto.action] || 'Event Update',
+        message: msgMap[dto.action] || `Your event status changed to ${newStatus}`,
+        type: `EVENT_${dto.action}`,
+        metadata: { eventId },
+      });
+    }
+
     return updated;
   }
 }

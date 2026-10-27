@@ -7,6 +7,10 @@ import { EmailModule } from './email';
 import { AuthModule } from './auth/auth.module';
 import { EventsModule } from './events/events.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { UsersModule } from './admin/users/users.module';
+import { AdminOrganizersModule } from './admin/organizers/admin-organizers.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { OrganizerModule } from './organizer/organizer.module';
 
 @Module({
   imports: [
@@ -21,6 +25,10 @@ import { UploadsModule } from './uploads/uploads.module';
     AuthModule,
     EventsModule,
     UploadsModule,
+    UsersModule,
+    AdminOrganizersModule,
+    NotificationsModule,
+    OrganizerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

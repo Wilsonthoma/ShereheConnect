@@ -10,15 +10,18 @@ import {
   CreditCard,
   ShieldCheck,
   ArrowLeft,
+  Building2,
 } from 'lucide-react';
 import { getUser, getToken, clearAuth } from '@/lib/auth';
+import { NotificationBell } from '@/components/shared/NotificationBell';
 
 const NAV = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/events', label: 'Events', icon: Calendar },
   { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/organizers', label: 'KYC Requests', icon: Building2 },
   { href: '/admin/payments', label: 'Payments', icon: CreditCard },
-  { href: '/admin/kyc', label: 'KYC', icon: ShieldCheck },
+  
 ];
 
 export default function AdminLayout({
@@ -116,8 +119,13 @@ export default function AdminLayout({
       </aside>
 
       {/* Main */}
-      <main className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto p-4 md:p-8">{children}</div>
+      <main className="flex-1 min-w-0 flex flex-col">
+        <header className="h-16 flex items-center justify-end px-4 md:px-8 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <NotificationBell />
+        </header>
+        <div className="max-w-7xl mx-auto p-4 md:p-8 w-full flex-1">
+          {children}
+        </div>
       </main>
     </div>
   );

@@ -11,6 +11,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { EventFilterDto } from './dto/event-filter.dto';
 import { CancelEventDto } from './dto/cancel-event.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class OrganizerEventsService {
@@ -19,6 +20,7 @@ export class OrganizerEventsService {
   constructor(
     private prisma: PrismaService,
     private events: EventsService,
+    private notifications: NotificationsService,
   ) {}
 
   private async getOrganizerProfileId(userId: string): Promise<string> {
@@ -47,6 +49,55 @@ export class OrganizerEventsService {
 
   async create(userId: string, dto: CreateEventDto) {
     const organizerId = await this.getOrganizerProfileId(userId);
+    
+    // ── GATE 1: Check KYC, Subscription, and Payment Method ──
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { id: organizerId },
+      include: {
+        subscriptions: {
+          where: { status: 'ACTIVE' },
+          include: { plan: true },
+        },
+        paymentMethods: {
+          where: { isActive: true },
+        },
+      },
+    });
+
+    if (!profile || profile.kycStatus !== 'VERIFIED') {
+      throw new ForbiddenException('Your account must be verified by an admin before you can create events.');
+    }
+
+    const activeSub = profile.subscriptions[0];
+    if (!activeSub) {
+      throw new ForbiddenException('You need an active subscription to create events.');
+    }
+
+    if (profile.paymentMethods.length === 0) {
+      throw new ForbiddenException('You need at least one approved payment method to sell tickets.');
+    }
+
+    // ── GATE 2: Check Monthly Limit for the Plan ──
+    if (activeSub.plan.maxEventsPerMonth !== null) {
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const eventsThisMonth = await this.prisma.event.count({
+        where: {
+          organizerId,
+          createdAt: { gte: startOfMonth },
+        },
+      });
+
+      if (eventsThisMonth >= activeSub.plan.maxEventsPerMonth) {
+        throw new ForbiddenException(
+          `You have reached your limit of ${activeSub.plan.maxEventsPerMonth} events per month on the ${activeSub.plan.name} plan. Please upgrade your subscription.`
+        );
+      }
+    }
+
+    // ── Proceed to create event ──
     const slug = await this.events.generateSlug(dto.title);
     const resolvedCategoryId = await this.resolveCategoryId(dto.categoryId);
 
@@ -66,6 +117,8 @@ export class OrganizerEventsService {
         startsAt: new Date(dto.startsAt),
         endsAt: new Date(dto.endsAt),
         maxAttendees: dto.maxAttendees ?? null,
+        isFeatured: dto.isFeatured ?? false,
+        eventFeatures: dto.eventFeatures ?? [],
         status: 'DRAFT',
         ticketTiers: {
           create: dto.ticketTiers.map((tier, i) => ({
@@ -173,6 +226,8 @@ export class OrganizerEventsService {
     if (dto.startsAt !== undefined) data.startsAt = new Date(dto.startsAt);
     if (dto.endsAt !== undefined) data.endsAt = new Date(dto.endsAt);
     if (dto.maxAttendees !== undefined) data.maxAttendees = dto.maxAttendees;
+    if (dto.isFeatured !== undefined) data.isFeatured = dto.isFeatured;
+    if (dto.eventFeatures !== undefined) data.eventFeatures = dto.eventFeatures;
 
     // Capture into a local const so TypeScript keeps the narrowing
     // inside the $transaction callback.
@@ -280,13 +335,22 @@ export class OrganizerEventsService {
         'Event must have at least one ticket tier before submission.',
       );
     }
-    return this.prisma.event.update({
+    const updated = await this.prisma.event.update({
       where: { id: eventId },
       data: {
         status: 'PENDING_APPROVAL',
         submittedAt: new Date(),
       },
     });
+
+    await this.notifications.notifyAdmins(
+      'Event Submitted',
+      `"${event.title}" has been submitted for approval.`,
+      'EVENT_SUBMITTED',
+      { eventId }
+    );
+
+    return updated;
   }
 
   async delete(userId: string, eventId: string) {

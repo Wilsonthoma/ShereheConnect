@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Trash2, Save } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, Plus, Trash2, Save, Clock, ShieldAlert, ArrowRight } from 'lucide-react';
 import { organizerEventsApi, TicketTier } from '@/lib/eventsApi';
+import { organizerApi } from '@/lib/organizerApi';
 import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { ImageUploader } from '@/components/ui';
@@ -21,15 +23,32 @@ export default function CreateEventPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState(1);
+  
+  // Gate state
+  const [gateLoading, setGateLoading] = useState(true);
+  const [isAllowed, setIsAllowed] = useState(false);
+  const [kycStatus, setKycStatus] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     title: '', description: '', categoryId: 'FESTIVAL', coverImageUrl: '',
-    venueName: '', address: '', county: 'Nairobi', // Lat/Lng hidden
+    venueName: '', address: '', county: 'Nairobi',
     startsAt: '', endsAt: '', maxAttendees: '', isFeatured: false, eventFeatures: [] as string[],
     ticketTiers: [{ name: 'Regular', priceKes: 0, quantityTotal: 100 }] as TicketTier[],
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    organizerApi.getProfile()
+      .then((p) => {
+        setKycStatus(p.kycStatus);
+        if (p.kycStatus === 'VERIFIED') {
+          setIsAllowed(true);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setGateLoading(false));
+  }, []);
 
   const updateForm = (field: string, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -83,7 +102,6 @@ export default function CreateEventPage() {
 
     setSaving(true);
     try {
-      // Auto-get coordinates based on the selected County
       const coords = lookupCounty(form.county) ?? { lat: -1.2921, lng: 36.8219 };
 
       const payload = {
@@ -109,9 +127,55 @@ export default function CreateEventPage() {
 
   const inputCls = (field: string) => `w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none transition-colors border ${errors[field] ? 'border-red-500' : 'border-slate-200 dark:border-slate-700 focus:border-gold'}`;
 
+  if (gateLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-4 border-gold border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAllowed) {
+    const isPending = kycStatus === 'PENDING';
+    return (
+      <div className="max-w-2xl mx-auto mt-10">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-10 text-center">
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+            isPending ? 'bg-blue-100 dark:bg-blue-950/50' : 'bg-red-100 dark:bg-red-950/50'
+          }`}>
+            {isPending ? (
+              <Clock className="w-8 h-8 text-blue-500" />
+            ) : (
+              <ShieldAlert className="w-8 h-8 text-red-500" />
+            )}
+          </div>
+          <h2 className="heading-display text-2xl text-slate-800 dark:text-slate-100 mb-2">
+            {isPending ? 'Verification Pending' : 'Verification Required'}
+          </h2>
+          <p className="text-sm text-slate-500 mb-6 max-w-md mx-auto">
+            {isPending 
+              ? 'Your KYC documents are currently being reviewed by our admin team. You will be able to create events as soon as your account is approved.'
+              : 'Your organizer account is not yet verified. You must complete KYC and have an approved payment method before you can create events.'}
+          </p>
+          
+          {!isPending && (
+            <Link
+              href="/organizer/onboarding"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
+            >
+              Complete Onboarding <ArrowRight className="w-4 h-4" />
+            </Link>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-4xl pb-20">
-      <button onClick={() => router.push('/organizer/events')} className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-gold"><ArrowLeft className="w-4 h-4" /> Back</button>
+      <button onClick={() => router.push('/organizer/events')} className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-gold transition-colors">
+        <ArrowLeft className="w-4 h-4" /> Back
+      </button>
       
       <div>
         <h1 className="heading-display text-2xl md:text-3xl text-slate-800 dark:text-slate-100 mb-1">Create Event</h1>

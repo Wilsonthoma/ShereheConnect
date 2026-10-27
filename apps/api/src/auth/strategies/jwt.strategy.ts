@@ -38,9 +38,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User no longer exists');
     }
 
-    if (user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('Account is not active');
+    if (user.status === 'DELETED') {
+      throw new UnauthorizedException('Account has been deleted');
     }
+
+    // Touch lastActiveAt on current session (fire-and-forget)
+    this.prisma.loginSession
+      .updateMany({
+        where: { userId: user.id, isActive: true },
+        data: { lastActiveAt: new Date() },
+      })
+      .catch(() => {
+        /* never fail auth because of activity tracking */
+      });
 
     return user;
   }

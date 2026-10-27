@@ -1,0 +1,189 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { SubmitProfileDto } from './dto/submit-profile.dto';
+import { AddPaymentMethodDto } from './dto/add-payment-method.dto';
+import { KycStatus, PaymentMethodType } from '@prisma/client';
+
+@Injectable()
+export class OrganizerService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getOwnProfile(userId: string) {
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { userId },
+      include: {
+        paymentMethods: { orderBy: { createdAt: 'desc' } },
+        subscriptions: {
+          where: { status: 'ACTIVE' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { plan: true },
+        },
+      },
+    });
+
+    if (!profile) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true, fullName: true, email: true, phone: true },
+      });
+      if (!user || user.role !== 'ORGANIZER') {
+        throw new ForbiddenException('Organizer profile not available');
+      }
+
+      const created = await this.prisma.organizerProfile.create({
+        data: {
+          userId,
+          businessName: user.fullName || 'Unnamed Organizer',
+          organizerType: 'INDIVIDUAL',
+          county: 'Nairobi',
+          phone: user.phone ?? null,
+          kycStatus: 'PENDING',
+        },
+        include: {
+          paymentMethods: { orderBy: { createdAt: 'desc' } },
+          subscriptions: {
+            where: { status: 'ACTIVE' },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            include: { plan: true },
+          },
+        },
+      });
+
+      return {
+        ...created,
+        submitted: false,
+        activeSubscription: null,
+        subscriptions: undefined,
+      };
+    }
+
+    const submitted = Boolean(
+      profile.businessName && profile.county && profile.phone,
+    );
+
+    return {
+      ...profile,
+      submitted,
+      activeSubscription: profile.subscriptions[0] ?? null,
+      subscriptions: undefined,
+    };
+  }
+
+  async submitProfile(userId: string, dto: SubmitProfileDto) {
+    const existing = await this.prisma.organizerProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!existing) {
+      return this.prisma.organizerProfile.create({
+        data: {
+          userId,
+          businessName: dto.businessName.trim(),
+          organizerType: dto.organizerType,
+          county: dto.county.trim(),
+          bio: dto.bio?.trim() || null,
+          logoUrl: dto.logoUrl || null,
+          phone: dto.phone,
+          kycStatus: KycStatus.PENDING,
+        },
+      });
+    }
+
+    return this.prisma.organizerProfile.update({
+      where: { userId },
+      data: {
+        businessName: dto.businessName.trim(),
+        organizerType: dto.organizerType,
+        county: dto.county.trim(),
+        bio: dto.bio?.trim() || null,
+        logoUrl: dto.logoUrl || null,
+        phone: dto.phone,
+        kycStatus: KycStatus.PENDING,
+        kycReviewedBy: null,
+        kycReviewedAt: null,
+        kycNotes: null,
+      },
+    });
+  }
+
+  async listOwnPaymentMethods(userId: string) {
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile) throw new NotFoundException('Organizer profile not found');
+
+    return this.prisma.paymentMethod.findMany({
+      where: { organizerId: profile.id },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async addPaymentMethod(userId: string, dto: AddPaymentMethodDto) {
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile) throw new NotFoundException('Organizer profile not found');
+
+    if (
+      (dto.methodType === PaymentMethodType.PAYBILL ||
+        dto.methodType === PaymentMethodType.TILL) &&
+      !dto.shortcode
+    ) {
+      throw new BadRequestException('shortcode is required for Paybill/Till');
+    }
+    if (
+      dto.methodType === PaymentMethodType.PAYBILL &&
+      !dto.accountNumber
+    ) {
+      throw new BadRequestException('accountNumber is required for Paybill');
+    }
+    if (
+      (dto.methodType === PaymentMethodType.POCHI ||
+        dto.methodType === PaymentMethodType.SEND_MONEY) &&
+      !dto.phoneNumber
+    ) {
+      throw new BadRequestException(
+        'phoneNumber is required for Pochi/Send Money',
+      );
+    }
+
+    return this.prisma.paymentMethod.create({
+      data: {
+        organizerId: profile.id,
+        methodType: dto.methodType,
+        shortcode: dto.shortcode ?? null,
+        accountNumber: dto.accountNumber ?? null,
+        phoneNumber: dto.phoneNumber ?? null,
+        displayLabel: dto.displayLabel ?? null,
+        isActive: false,
+        isDefault: false,
+        c2bRegistered: false,
+      },
+    });
+  }
+
+  async deletePaymentMethod(userId: string, id: string) {
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile) throw new NotFoundException('Organizer profile not found');
+
+    const method = await this.prisma.paymentMethod.findFirst({
+      where: { id, organizerId: profile.id },
+    });
+    if (!method) throw new NotFoundException('Payment method not found');
+
+    await this.prisma.paymentMethod.delete({ where: { id } });
+    return { success: true };
+  }
+}

@@ -11,16 +11,9 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-// ============================================
-// UPLOADS CONTROLLER
-//
-// POST /uploads   (multipart/form-data)
-//   field: "file"
-//   returns: { url: "/uploads/<filename>", ... }
-//
-// Files are written to apps/api/uploads/ and
-// served statically via useStaticAssets() in main.ts
-// ============================================
+const IMAGE_MIMES = /^image\/(jpeg|png|webp|gif)$/;
+const PDF_MIME = 'application/pdf';
+
 @Controller('uploads')
 @UseGuards(JwtAuthGuard)
 export class UploadsController {
@@ -37,13 +30,14 @@ export class UploadsController {
         },
       }),
       limits: {
-        fileSize: 5 * 1024 * 1024, // 5 MB
+        // Up to 10MB — images < 5MB, PDFs < 10MB (enforced below)
+        fileSize: 10 * 1024 * 1024,
       },
       fileFilter: (req, file, callback) => {
-        if (!file.mimetype.match(/^image\/(jpeg|png|webp|gif)$/)) {
+        if (!IMAGE_MIMES.test(file.mimetype) && file.mimetype !== PDF_MIME) {
           return callback(
             new BadRequestException(
-              'Only JPEG, PNG, WebP, or GIF images are allowed.',
+              'Only JPEG, PNG, WebP, GIF images or PDF documents are allowed.',
             ),
             false,
           );
@@ -56,6 +50,16 @@ export class UploadsController {
     if (!file) {
       throw new BadRequestException('No file uploaded.');
     }
+
+    // Enforce 5MB for images, 10MB for PDFs
+    const isPdf = file.mimetype === PDF_MIME;
+    const maxSize = isPdf ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new BadRequestException(
+        isPdf ? 'PDF must be under 10MB.' : 'Image must be under 5MB.',
+      );
+    }
+
     return {
       url: `/uploads/${file.filename}`,
       filename: file.filename,

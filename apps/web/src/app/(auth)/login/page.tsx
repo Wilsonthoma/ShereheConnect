@@ -34,24 +34,23 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  /* ---------- Session expired banner ---------- */
   useEffect(() => {
     if (expiredParam === '1') {
-      toast.info(
-        'Session expired',
-        'Please log in again to continue.',
-      );
+      toast.info('Session expired', 'Please log in again to continue.');
     }
   }, [expiredParam]);
 
-  /* ---------- Already logged in → redirect ---------- */
   useEffect(() => {
     if (!isLoggedIn()) return;
     const userRaw = localStorage.getItem('attendee_user');
     if (userRaw) {
       try {
         const u = JSON.parse(userRaw);
-        router.replace(nextParam || getHomeRoute(u.role));
+        if (u.status === 'SUSPENDED') {
+          router.replace('/suspended');
+        } else {
+          router.replace(nextParam || getHomeRoute(u.role));
+        }
       } catch {
         /* ignore */
       }
@@ -80,26 +79,30 @@ function LoginForm() {
     try {
       const res = await authApi.login(email.trim().toLowerCase(), password);
 
-      // IMPORTANT: save the refresh token so auto-refresh works later
+      // Save the session
       setAuth(res.accessToken, res.refreshToken ?? null, {
         id: res.user.id,
         email: res.user.email,
         phone: res.user.phone,
         fullName: res.user.fullName,
         role: res.user.role,
+        status: (res.user as any).status || 'ACTIVE',
+        suspensionReason: (res.user as any).suspensionReason || null,
       });
 
+      // Handle Suspended Status immediately
+      if ((res.user as any).status === 'SUSPENDED') {
+        router.replace('/suspended');
+        return;
+      }
+
+      // Handle Email Verification
       if (res.user.role === 'ORGANIZER' && res.user.emailVerified === false) {
         toast.info(
           tr('auth.login.verifyEmail', 'Verify your email'),
-          tr(
-            'auth.login.verifyEmailBody',
-            'Enter the 6-digit code we sent you.',
-          ),
+          tr('auth.login.verifyEmailBody', 'Enter the 6-digit code we sent you.'),
         );
-        router.replace(
-          `/verify-otp?email=${encodeURIComponent(res.user.email)}`,
-        );
+        router.replace(`/verify-otp?email=${encodeURIComponent(res.user.email)}`);
         return;
       }
 
@@ -108,17 +111,16 @@ function LoginForm() {
         `${tr('auth.login.signedInAs', 'Signed in as')} ${res.user.fullName}`,
       );
 
+      // Standard redirect
       setTimeout(() => {
         router.replace(nextParam || getHomeRoute(res.user.role));
       }, 600);
+      
     } catch (err) {
       const msg =
         err instanceof ApiException
           ? err.message
-          : tr(
-              'auth.login.error.generic',
-              'Something went wrong. Please try again.',
-            );
+          : tr('auth.login.error.generic', 'Something went wrong. Please try again.');
       toast.error(tr('auth.login.error.title', 'Login failed'), msg);
       setIsLoading(false);
     }
@@ -127,17 +129,12 @@ function LoginForm() {
   return (
     <AuthLayout
       title={tr('auth.login.title', 'Welcome Back')}
-      subtitle={tr(
-        'auth.login.subtitle',
-        'Log in to continue to your account',
-      )}
+      subtitle={tr('auth.login.subtitle', 'Log in to continue to your account')}
       footer={
         <>
           {tr('auth.login.noAccount', "Don't have an account?")}{' '}
           <Link
-            href={`/register${
-              nextParam ? `?next=${encodeURIComponent(nextParam)}` : ''
-            }`}
+            href={`/register${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ''}`}
             className="text-gold hover:text-orange font-semibold transition-colors"
           >
             {tr('auth.login.signUp', 'Sign Up')}
@@ -145,7 +142,6 @@ function LoginForm() {
         </>
       }
     >
-      {/* Session expired banner */}
       {expiredParam === '1' && (
         <div className="mb-4 flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
           <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -169,10 +165,7 @@ function LoginForm() {
         />
         <FormField
           type={showPassword ? 'text' : 'password'}
-          placeholder={tr(
-            'auth.login.password.placeholder',
-            'Enter your password',
-          )}
+          placeholder={tr('auth.login.password.placeholder', 'Enter your password')}
           value={password}
           onChange={setPassword}
           onBlur={() => setTouched((p) => ({ ...p, password: true }))}
@@ -184,13 +177,8 @@ function LoginForm() {
               onClick={() => setShowPassword(!showPassword)}
               className="text-slate-500 dark:text-white/50 hover:text-gold transition-colors"
               tabIndex={-1}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
-              {showPassword ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           }
           autoComplete="current-password"
@@ -199,16 +187,10 @@ function LoginForm() {
 
         <div className="flex items-center justify-between text-xs pt-1">
           <label className="flex items-center gap-2 text-slate-600 dark:text-white/60 cursor-pointer transition-colors">
-            <input
-              type="checkbox"
-              className="w-3.5 h-3.5 accent-gold cursor-pointer rounded"
-            />
+            <input type="checkbox" className="w-3.5 h-3.5 accent-gold cursor-pointer rounded" />
             <span>{tr('auth.login.rememberMe', 'Remember me')}</span>
           </label>
-          <Link
-            href="/forgot-password"
-            className="text-gold hover:text-orange transition-colors font-medium"
-          >
+          <Link href="/forgot-password" className="text-gold hover:text-orange transition-colors font-medium">
             {tr('auth.login.forgotPassword', 'Forgot password?')}
           </Link>
         </div>
@@ -232,37 +214,16 @@ function LoginForm() {
   );
 }
 
-function FormField({
-  type = 'text',
-  placeholder,
-  value,
-  onChange,
-  onBlur,
-  error,
-  leftIcon,
-  rightIcon,
-  autoComplete,
-  disabled,
-}: any) {
+function FormField({ type = 'text', placeholder, value, onChange, onBlur, error, leftIcon, rightIcon, autoComplete, disabled }: any) {
   const hasError = !!error;
   return (
     <div>
-      <div
-        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border transition-all ${
-          hasError
-            ? 'border-red-500/60 focus-within:border-red-500 bg-slate-100 dark:bg-white/5'
-            : 'border-slate-300 dark:border-white/15 bg-slate-100 dark:bg-white/5 focus-within:border-gold focus-within:bg-white dark:focus-within:bg-white/8'
-        }`}
-      >
-        {leftIcon && (
-          <span
-            className={`shrink-0 ${
-              hasError ? 'text-red-500/70' : 'text-slate-500 dark:text-white/40'
-            }`}
-          >
-            {leftIcon}
-          </span>
-        )}
+      <div className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border transition-all ${
+        hasError
+          ? 'border-red-500/60 focus-within:border-red-500 bg-slate-100 dark:bg-white/5'
+          : 'border-slate-300 dark:border-white/15 bg-slate-100 dark:bg-white/5 focus-within:border-gold focus-within:bg-white dark:focus-within:bg-white/8'
+      }`}>
+        {leftIcon && <span className={`shrink-0 ${hasError ? 'text-red-500/70' : 'text-slate-500 dark:text-white/40'}`}>{leftIcon}</span>}
         <input
           type={type}
           placeholder={placeholder}
@@ -275,22 +236,14 @@ function FormField({
         />
         {rightIcon && <span className="shrink-0">{rightIcon}</span>}
       </div>
-      {hasError && (
-        <p className="mt-1 text-[0.7rem] text-red-500 px-1">{error}</p>
-      )}
+      {hasError && <p className="mt-1 text-[0.7rem] text-red-500 px-1">{error}</p>}
     </div>
   );
 }
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-light dark:bg-dark-deep">
-          <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" />
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-light dark:bg-dark-deep"><div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" /></div>}>
       <LoginForm />
     </Suspense>
   );

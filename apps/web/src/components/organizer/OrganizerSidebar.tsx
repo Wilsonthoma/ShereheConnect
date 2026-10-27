@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
+  Clock,
+  AlertCircle,
   Calendar,
   LayoutDashboard,
-  Ticket,
   Users,
   BarChart3,
   CreditCard,
@@ -15,9 +16,11 @@ import {
   Gem,
   X,
   LogOut,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { getInitials } from '@/lib/auth';
+import { organizerApi } from '@/lib/organizerApi';
 
 interface OrganizerSidebarProps {
   mobileOpen?: boolean;
@@ -27,7 +30,6 @@ interface OrganizerSidebarProps {
 const NAV_ITEMS = [
   { href: '/organizer/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/organizer/events', label: 'My Events', icon: Calendar },
-  { href: '/organizer/attendees', label: 'Attendees', icon: Users },
   { href: '/organizer/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/organizer/payments', label: 'Payments', icon: CreditCard },
   { href: '/organizer/profile', label: 'Profile', icon: UserCircle },
@@ -42,6 +44,14 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const initials = user ? getInitials(user.fullName) : 'U';
+  
+  const [kycStatus, setKycStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    organizerApi.getProfile()
+      .then((p) => setKycStatus(p.kycStatus))
+      .catch(() => {});
+  }, []);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + '/');
@@ -99,6 +109,39 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
 
         <div className="h-px bg-slate-200 dark:bg-slate-800 my-3" />
 
+        {/* Dynamic Onboarding/Verified Button */}
+        {kycStatus === 'VERIFIED' ? (
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30">
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            <span>Verified</span>
+          </div>
+        ) : kycStatus === 'SUSPENDED' || kycStatus === 'REJECTED' ? (
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-red-600 bg-red-50 dark:bg-red-950/30">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>Action Required</span>
+          </div>
+        ) : kycStatus === 'PENDING' ? (
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/30">
+            <Clock className="w-4 h-4 shrink-0" />
+            <span>Pending Review</span>
+          </div>
+        ) : (
+          <Link
+            href="/organizer/onboarding"
+            onClick={onClose}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              isActive('/organizer/onboarding')
+                ? 'bg-brand-gradient text-white shadow-md'
+                : 'text-slate-600 dark:text-slate-400 hover:text-gold hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            <span>Get Verified</span>
+          </Link>
+        )}
+
+        <div className="h-px bg-slate-200 dark:bg-slate-800 my-3" />
+
         {BOTTOM_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);
@@ -146,12 +189,10 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
 
   return (
     <>
-      {/* Desktop */}
       <div className="hidden lg:block fixed left-0 top-0 h-screen z-40">
         {content}
       </div>
 
-      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-[60] lg:hidden">
           <div
