@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   Plus,
   Trash2,
-  Loader2,
   FileText,
   Image as ImageIcon,
   ShieldCheck,
@@ -22,6 +21,7 @@ import {
   PaymentMethodType,
 } from '@/lib/organizerApi';
 import { toast } from '@/lib/toast';
+import { FullPageLoader } from '@/components/ui';
 
 const KYC_STYLES: Record<
   string,
@@ -128,11 +128,7 @@ export default function OrganizerProfilePage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-8 h-8 text-gold animate-spin" />
-      </div>
-    );
+    return <FullPageLoader message="Loading organizer profile..." />;
   }
 
   if (!profile) {

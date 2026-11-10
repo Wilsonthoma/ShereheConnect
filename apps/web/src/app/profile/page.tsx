@@ -13,6 +13,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { ProtectedRoute } from '@/components/auth';
+import { FullPageLoader } from '@/components/ui';
 import { getToken, getUser, setAuth } from '@/lib/auth';
 import { api, ApiException } from '@/lib/api';
 import { toast } from '@/lib/toast';
@@ -113,11 +114,7 @@ function ProfileContent() {
   // LOADING STATE
   // ============================================
   if (loading) {
-    return (
-      <main className="min-h-screen bg-light dark:bg-slate-950 flex items-center justify-center transition-colors">
-        <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" />
-      </main>
-    );
+    return <FullPageLoader message="Loading profile..." />;
   }
 
   // ============================================

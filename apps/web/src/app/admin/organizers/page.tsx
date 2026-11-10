@@ -8,10 +8,11 @@ import { FullPageLoader } from '@/components/ui';
 import { toast } from '@/lib/toast';
 
 const KYC_STYLES: Record<string, string> = {
-  PENDING: 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300',
-  VERIFIED: 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300',
-  NEEDS_REVISION: 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300',
-  REJECTED: 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300',
+  PENDING: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+  VERIFIED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+  NEEDS_REVISION: 'bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300',
+  REJECTED: 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300',
+  SUSPENDED: 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300',
 };
 
 const KYC_ICONS: Record<string, any> = {
@@ -19,6 +20,7 @@ const KYC_ICONS: Record<string, any> = {
   VERIFIED: ShieldCheck,
   NEEDS_REVISION: AlertTriangle,
   REJECTED: XCircle,
+  SUSPENDED: AlertTriangle,
 };
 
 export default function AdminOrganizersPage() {
@@ -68,18 +70,18 @@ export default function AdminOrganizersPage() {
                   const Icon = KYC_ICONS[o.kycStatus] || Clock;
                   const kycClass = KYC_STYLES[o.kycStatus] || KYC_STYLES.PENDING;
                   return (
-                    <tr key={o.id} className="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <tr key={o.id} className="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="px-4 py-3">
                         <p className="font-bold text-slate-800 dark:text-slate-100">{o.businessName}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">{o.user?.email} · {o.county}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[0.65rem] font-bold uppercase ${kycClass}`}>
-                          <Icon className="w-3 h-3" /> {o.kycStatus}
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[0.65rem] font-bold uppercase tracking-wide ${kycClass}`}>
+                          <Icon className="w-3 h-3" /> {o.kycStatus.replace('_', ' ')}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs font-semibold ${o.paymentMethods?.some((p:any)=>p.isActive) ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                        <span className={`text-xs font-bold uppercase tracking-wide ${o.paymentMethods?.some((p:any)=>p.isActive) ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                           {o.paymentMethods?.some((p:any)=>p.isActive) ? 'Approved' : 'Pending'}
                         </span>
                       </td>

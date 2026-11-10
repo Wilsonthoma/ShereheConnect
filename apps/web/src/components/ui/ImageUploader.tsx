@@ -47,13 +47,15 @@ export function ImageUploader({ value, onChange, label = 'Upload Image' }: any) 
 
     setUploading(true);
     try {
+      const token = getToken();
+      if (!token) throw new Error('Please log in again before uploading.');
       const compressed = await compressImage(file);
       const formData = new FormData();
       formData.append('file', compressed);
 
       const res = await fetch(`${API_URL}/uploads`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
@@ -73,16 +75,26 @@ export function ImageUploader({ value, onChange, label = 'Upload Image' }: any) 
       {label && <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5">{label}</label>}
       {value ? (
         <div className="relative w-full h-48 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group">
-          <img src={value} alt="Preview" className="w-full h-full object-cover" />
-          <button onClick={() => onChange('')} className="absolute top-2 right-2 p-1.5 bg-black/70 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-4 h-4" /></button>
+          <img src={value} alt="Event cover preview" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+          <button type="button" onClick={() => onChange('')} aria-label="Remove cover image" title="Remove cover image" className="absolute top-2 right-2 p-1.5 bg-black/70 text-white rounded-full opacity-100 transition-opacity"><X className="w-4 h-4" /></button>
         </div>
       ) : (
-        <div onClick={() => inputRef.current?.click()} className="flex flex-col items-center justify-center gap-2 w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl cursor-pointer hover:border-gold transition-colors">
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} aria-label="Choose an event cover image" className="flex flex-col items-center justify-center gap-2 w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl cursor-pointer hover:border-gold disabled:cursor-wait transition-colors">
           {uploading ? <Loader2 className="w-6 h-6 text-gold animate-spin" /> : <UploadCloud className="w-6 h-6 text-slate-400" />}
           <p className="text-xs text-slate-500">{uploading ? 'Uploading...' : 'Click to upload'}</p>
-        </div>
+        </button>
       )}
-      <input ref={inputRef} type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} className="hidden" />
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) void handleFile(file);
+        }}
+        className="hidden"
+      />
     </div>
   );
 }

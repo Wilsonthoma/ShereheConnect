@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { AuthLayout } from '@/components/auth';
+import { FullPageLoader } from '@/components/ui';
 import { authApi, ApiException } from '@/lib/api';
 import { setAuth, getHomeRoute, isLoggedIn } from '@/lib/auth';
 import { toast } from '@/lib/toast';
@@ -19,6 +20,7 @@ function LoginForm() {
   const { t } = useLanguage();
   const nextParam = searchParams.get('next');
   const expiredParam = searchParams.get('expired');
+  const verifiedParam = searchParams.get('verified');
 
   const tr = (key: string, fallback: string): string => {
     const value = t(key as any);
@@ -39,6 +41,12 @@ function LoginForm() {
       toast.info('Session expired', 'Please log in again to continue.');
     }
   }, [expiredParam]);
+
+  useEffect(() => {
+    if (verifiedParam === '1') {
+      toast.success('Email verified', 'Please log in to continue.');
+    }
+  }, [verifiedParam]);
 
   useEffect(() => {
     if (!isLoggedIn()) return;
@@ -79,6 +87,19 @@ function LoginForm() {
     try {
       const res = await authApi.login(email.trim().toLowerCase(), password);
 
+      if (res.user.status === 'SUSPENDED') {
+        localStorage.setItem(
+          'attendee_user',
+          JSON.stringify({ ...res.user, status: 'SUSPENDED' }),
+        );
+        router.replace('/suspended');
+        return;
+      }
+
+      if (!res.accessToken) {
+        throw new Error('Could not start your session. Please try again.');
+      }
+
       // Save the session
       setAuth(res.accessToken, res.refreshToken ?? null, {
         id: res.user.id,
@@ -89,22 +110,6 @@ function LoginForm() {
         status: (res.user as any).status || 'ACTIVE',
         suspensionReason: (res.user as any).suspensionReason || null,
       });
-
-      // Handle Suspended Status immediately
-      if ((res.user as any).status === 'SUSPENDED') {
-        router.replace('/suspended');
-        return;
-      }
-
-      // Handle Email Verification
-      if (res.user.role === 'ORGANIZER' && res.user.emailVerified === false) {
-        toast.info(
-          tr('auth.login.verifyEmail', 'Verify your email'),
-          tr('auth.login.verifyEmailBody', 'Enter the 6-digit code we sent you.'),
-        );
-        router.replace(`/verify-otp?email=${encodeURIComponent(res.user.email)}`);
-        return;
-      }
 
       toast.success(
         tr('auth.login.welcomeToast', 'Welcome back!'),
@@ -243,7 +248,7 @@ function FormField({ type = 'text', placeholder, value, onChange, onBlur, error,
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-light dark:bg-dark-deep"><div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" /></div>}>
+    <Suspense fallback={<FullPageLoader message="Loading login..." />}>
       <LoginForm />
     </Suspense>
   );

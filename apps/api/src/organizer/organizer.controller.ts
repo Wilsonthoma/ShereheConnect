@@ -27,6 +27,21 @@ export class OrganizerController {
     return this.organizer.getOwnProfile(user.id);
   }
 
+  @Get('profile/status')
+  getVerificationStatus(@CurrentUser() user: any) {
+    return this.organizer.getVerificationStatus(user.id);
+  }
+
+  @Get('subscription/plans')
+  listSubscriptionPlans() {
+    return this.organizer.listSubscriptionPlans();
+  }
+
+  @Get('subscription')
+  getSubscription(@CurrentUser() user: any) {
+    return this.organizer.getSubscriptionOverview(user.id);
+  }
+
   @Post('profile/submit')
   submitProfile(@CurrentUser() user: any, @Body() dto: SubmitProfileDto) {
     return this.organizer.submitProfile(user.id, dto);

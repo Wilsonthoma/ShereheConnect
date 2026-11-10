@@ -12,6 +12,16 @@ export const adminOrganizersApi = {
   reviewKyc: (id: string, kycStatus: string, notes?: string) =>
     api.patch(`/admin/organizers/${id}/kyc`, { kycStatus, notes }, getToken()),
 
+  suspend: (id: string, reason: string) =>
+    api.patch(`/admin/organizers/${id}/suspend`, { reason }, getToken()),
+
   approvePaymentMethod: (id: string) =>
     api.patch(`/admin/organizers/payment-methods/${id}/approve`, {}, getToken()),
+
+  rejectPaymentMethod: (id: string, reason: string) =>
+    api.patch(
+      `/admin/organizers/payment-methods/${id}/reject`,
+      { reason },
+      getToken(),
+    ),
 };

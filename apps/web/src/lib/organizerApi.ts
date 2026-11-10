@@ -49,6 +49,26 @@ export interface OrganizerProfile {
   activeSubscription: any | null;
 }
 
+export interface SubscriptionPlan {
+  id: string;
+  code: string;
+  name: string;
+  priceKes: number;
+  billingInterval: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
+  maxEventsPerMonth: number | null;
+  maxAttendeesEvent: number | null;
+}
+
+export interface SubscriptionOverview {
+  activeSubscription: {
+    id: string;
+    currentPeriodEnd: string;
+    plan: SubscriptionPlan;
+  } | null;
+  eventsThisMonth: number;
+  plans: SubscriptionPlan[];
+}
+
 export interface SubmitProfileInput {
   businessName: string;
   organizerType: OrganizerType;
@@ -58,6 +78,7 @@ export interface SubmitProfileInput {
   phone: string;
   kraPin: string;
   kycDocuments: KycDocument[];
+  paymentMethod: AddPaymentMethodInput;
 }
 
 export interface AddPaymentMethodInput {
@@ -75,6 +96,12 @@ function token(): string | null {
 export const organizerApi = {
   getProfile: () =>
     api.get<OrganizerProfile>('/organizer/profile', token()),
+
+  getVerificationStatus: () =>
+    api.get<{ kycStatus: KycStatus }>('/organizer/profile/status', token()),
+
+  getSubscription: () =>
+    api.get<SubscriptionOverview>('/organizer/subscription', token()),
 
   submitProfile: (dto: SubmitProfileInput) =>
     api.post<OrganizerProfile>('/organizer/profile/submit', dto, token()),

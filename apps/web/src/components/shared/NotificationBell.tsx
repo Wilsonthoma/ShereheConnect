@@ -5,6 +5,7 @@ import { Bell, CheckCircle2, Ticket, ShieldAlert } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getToken, getUser } from '@/lib/auth';
 import Link from 'next/link';
+import { Spinner } from '@/components/ui';
 
 interface Notification {
   id: string;
@@ -43,8 +44,7 @@ export function NotificationBell() {
 
   useEffect(() => {
     loadNotifications();
-    // Poll every 15 seconds for testing (change back to 30000 later)
-    const interval = setInterval(loadNotifications, 15000);
+    const interval = setInterval(loadNotifications, 30000);
 
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -94,9 +94,11 @@ export function NotificationBell() {
     if (role === 'ADMIN') {
       if (n.type.includes('KYC')) return '/admin/organizers';
       if (n.type.includes('EVENT')) return '/admin/events';
+      if (n.type.includes('PAYMENT_METHOD')) return '/admin/organizers';
     }
     if (role === 'ORGANIZER') {
       if (n.type.includes('KYC')) return '/organizer/profile';
+      if (n.type.includes('PAYMENT_METHOD')) return '/organizer/profile';
       if (n.metadata?.eventId) return `/organizer/events/${n.metadata.eventId}`;
     }
     return '#';
@@ -132,8 +134,9 @@ export function NotificationBell() {
           
           <div className="max-h-80 overflow-y-auto">
             {loading && notifications.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-slate-400">
-                Loading...
+              <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-slate-400" role="status">
+                <Spinner size="sm" />
+                Checking notifications
               </div>
             ) : notifications.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-slate-400">

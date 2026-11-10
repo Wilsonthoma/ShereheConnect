@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { Mail, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { AuthLayout } from '@/components/auth';
+import { FullPageLoader } from '@/components/ui';
 import { extendedAuthApi, ApiException } from '@/lib/api';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 
@@ -170,11 +171,7 @@ function ForgotPasswordForm() {
 export default function ForgotPasswordPage() {
   return (
     <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-light dark:bg-dark-deep">
-          <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" />
-        </div>
-      }
+      fallback={<FullPageLoader message="Loading..." />}
     >
       <ForgotPasswordForm />
     </Suspense>

@@ -10,9 +10,9 @@ import {
   AlertCircle,
   Clock,
   ArrowRight,
-  Loader2,
 } from 'lucide-react';
 import { organizerApi, OrganizerProfile } from '@/lib/organizerApi';
+import { FullPageLoader } from '@/components/ui';
 
 const STATS = [
   { label: 'Total Events', value: '0', icon: Calendar, trend: '+0 this month' },
@@ -36,6 +36,10 @@ export default function OrganizerDashboardPage() {
   const kycStatus = profile?.kycStatus;
   const needsVerification = kycStatus !== 'VERIFIED';
 
+  if (loadingProfile) {
+    return <FullPageLoader message="Loading organizer dashboard..." />;
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -48,7 +52,7 @@ export default function OrganizerDashboardPage() {
       </div>
 
       {/* Verification banner */}
-      {!loadingProfile && needsVerification && (
+      {needsVerification && (
         <div
           className={`rounded-2xl p-5 border ${
             kycStatus === 'PENDING'
@@ -86,7 +90,7 @@ export default function OrganizerDashboardPage() {
                   ? 'Verification pending review'
                   : kycStatus === 'SUSPENDED'
                   ? 'Account suspended'
-                  : 'Complete your verification to start'}
+                  : 'Complete your verification to start hosting events'}
               </h3>
               <p
                 className={`text-sm mb-3 ${
@@ -97,7 +101,7 @@ export default function OrganizerDashboardPage() {
               >
                 {kycStatus === 'PENDING'
                   ? 'Your details have been submitted and are being reviewed by our team. You will be notified via email once approved.'
-                  : 'Submit your business information and payment method so an admin can verify your account. Only then can you create events.'}
+                  : 'Complete onboarding and submit your details for admin review before creating events.'}
               </p>
               {profile?.kycNotes && kycStatus === 'NEEDS_REVISION' && (
                 <p className="text-sm text-red-700 dark:text-red-300 mb-3">
@@ -106,7 +110,7 @@ export default function OrganizerDashboardPage() {
               )}
 
               {/* Only show button if they need to take action */}
-              {kycStatus !== 'PENDING' && kycStatus !== 'SUSPENDED' && (
+              {kycStatus !== 'PENDING' && (
                 <Link
                   href="/organizer/onboarding"
                   className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
@@ -115,18 +119,12 @@ export default function OrganizerDashboardPage() {
                     ? 'Update submission'
                     : kycStatus === 'REJECTED'
                     ? 'Resubmit'
-                    : 'Start onboarding'}
+                    : 'Start Onboarding'}
                   <ArrowRight className="w-4 h-4" />
                 </Link>
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {loadingProfile && (
-        <div className="flex items-center justify-center py-4">
-          <Loader2 className="w-5 h-5 text-gold animate-spin" />
         </div>
       )}
 
@@ -177,14 +175,6 @@ export default function OrganizerDashboardPage() {
             className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
           >
             Create Event
-          </Link>
-        ) : kycStatus !== 'PENDING' && kycStatus !== 'SUSPENDED' ? (
-          <Link
-            href="/organizer/onboarding"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
-          >
-            Go to Onboarding
-            <ArrowRight className="w-4 h-4" />
           </Link>
         ) : null}
       </div>

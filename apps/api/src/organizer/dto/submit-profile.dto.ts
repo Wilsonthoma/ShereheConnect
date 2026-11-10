@@ -9,9 +9,11 @@ import {
   IsArray,
   ValidateNested,
   IsIn,
+  IsDefined,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { OrganizerType } from '@prisma/client';
+import { AddPaymentMethodDto } from './add-payment-method.dto';
 
 // Kenyan KRA PIN:
 //   Individual: A012345678K  (letter + 9 digits + letter)
@@ -86,4 +88,9 @@ export class SubmitProfileDto {
   @ValidateNested({ each: true })
   @Type(() => KycDocumentDto)
   kycDocuments!: KycDocumentDto[];
+
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => AddPaymentMethodDto)
+  paymentMethod!: AddPaymentMethodDto;
 }

@@ -22,6 +22,7 @@ import {
 } from '@/lib/organizerApi';
 import { toast } from '@/lib/toast';
 import { DocumentUploader } from '@/components/ui/DocumentUploader';
+import { FullPageLoader } from '@/components/ui';
 
 const COUNTIES = [
   'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Malindi',
@@ -79,17 +80,6 @@ export default function OrganizerOnboardingPage() {
       .getProfile()
       .then((p) => {
         setProfile(p);
-        setBusiness({
-          businessName: p.businessName ?? '',
-          organizerType: p.organizerType ?? 'INDIVIDUAL',
-          county: p.county ?? 'Nairobi',
-          bio: p.bio ?? '',
-          phone: p.phone ?? '',
-          kraPin: p.kraPin ?? '',
-        });
-        if (p.kycDocuments && Array.isArray(p.kycDocuments)) {
-          setDocuments(p.kycDocuments);
-        }
       })
       .catch(() => {}) // Removed toast error for load
       .finally(() => setLoading(false));
@@ -172,13 +162,13 @@ export default function OrganizerOnboardingPage() {
         phone: business.phone.trim(),
         kraPin: business.kraPin.trim().toUpperCase(),
         kycDocuments: documents,
-      });
-      await organizerApi.addPaymentMethod({
-        methodType: payment.methodType,
-        shortcode: payment.shortcode.trim() || undefined,
-        accountNumber: payment.accountNumber.trim() || undefined,
-        phoneNumber: payment.phoneNumber.trim() || undefined,
-        displayLabel: payment.displayLabel.trim() || undefined,
+        paymentMethod: {
+          methodType: payment.methodType,
+          shortcode: payment.shortcode.trim() || undefined,
+          accountNumber: payment.accountNumber.trim() || undefined,
+          phoneNumber: payment.phoneNumber.trim() || undefined,
+          displayLabel: payment.displayLabel.trim() || undefined,
+        },
       });
       
       // Simple success toast
@@ -193,11 +183,7 @@ export default function OrganizerOnboardingPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-8 h-8 text-gold animate-spin" />
-      </div>
-    );
+    return <FullPageLoader message="Loading onboarding..." />;
   }
 
   if (profile?.kycStatus === 'VERIFIED') {
@@ -389,7 +375,15 @@ export default function OrganizerOnboardingPage() {
             <Field label="Method Type *">
               <select
                 value={payment.methodType}
-                onChange={(e) => setPayment({ ...payment, methodType: e.target.value as PaymentMethodType })}
+                onChange={(e) =>
+                  setPayment({
+                    methodType: e.target.value as PaymentMethodType,
+                    shortcode: '',
+                    accountNumber: '',
+                    phoneNumber: '',
+                    displayLabel: payment.displayLabel,
+                  })
+                }
                 className={inputCls(false)}
               >
                 {PAYMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}

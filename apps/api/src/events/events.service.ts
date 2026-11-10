@@ -17,8 +17,23 @@ export class EventsService {
     const limit = filter.limit ?? 20;
     const offset = filter.offset ?? 0;
 
+    // 1. Automatically mark expired events as COMPLETED
+    await this.prisma.event.updateMany({
+      where: {
+        status: { in: ['LIVE', 'ONGOING'] },
+        endsAt: { lt: new Date() },
+      },
+      data: { status: 'COMPLETED' },
+    });
+
     const where: any = {
       status: { in: ['LIVE', 'ONGOING'] },
+      // Block events from suspended or deleted organizers
+      organizer: {
+        user: {
+          status: 'ACTIVE',
+        },
+      },
     };
 
     if (filter.q) {
@@ -67,8 +82,16 @@ export class EventsService {
 
   /** Public: view a single live event by slug */
   async findBySlug(slug: string) {
-    const event = await this.prisma.event.findUnique({
-      where: { slug },
+    const event = await this.prisma.event.findFirst({
+      where: {
+        slug,
+        // Block direct links to suspended organizers' events
+        organizer: {
+          user: {
+            status: 'ACTIVE',
+          },
+        },
+      },
       include: {
         organizer: {
           select: {

@@ -4,12 +4,16 @@ import { UserStatus, KycStatus } from '@prisma/client';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateKycDto } from './dto/update-kyc.dto';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async list(query: ListUsersQueryDto) {
     const page = query.page ?? 1;
@@ -81,7 +85,19 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
     if (user.id === actorId) throw new BadRequestException('You cannot change your own status');
 
-    return this.prisma.user.update({
+    if (dto.status === 'SUSPENDED') {
+      const allowedReasons = [
+        'Violation of platform terms',
+        'Fraudulent or misleading KYC documents',
+        'Multiple attendee complaints',
+        'Failure to fulfil event obligations',
+      ];
+      if (!dto.reason || !allowedReasons.includes(dto.reason)) {
+        throw new BadRequestException('Select a valid suspension reason.');
+      }
+    }
+
+    const updated = await this.prisma.user.update({
       where: { id },
       data: { 
         status: dto.status,
@@ -89,6 +105,15 @@ export class UsersService {
       },
       select: { id: true, email: true, status: true, updatedAt: true },
     });
+    if (dto.status === 'SUSPENDED') {
+      await this.notifications.create({
+        userId: user.id,
+        title: 'Account Suspended',
+        message: `Your account has been suspended. Reason: ${dto.reason}`,
+        type: 'ACCOUNT_SUSPENDED',
+      });
+    }
+    return updated;
   }
 
   async softDelete(id: string, actorId: string) {

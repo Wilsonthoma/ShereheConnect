@@ -37,3 +37,10 @@ coverage/
 *.sqlite3
 tmp/
 temp/
+
+# Uploads (user-generated content, not source code)
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep
+
+# Stray npm lockfile (project uses pnpm)
+package-lock.json

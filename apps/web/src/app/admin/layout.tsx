@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { getUser, getToken, clearAuth } from '@/lib/auth';
 import { NotificationBell } from '@/components/shared/NotificationBell';
+import { FullPageLoader } from '@/components/ui';
 
 const NAV = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -44,11 +45,7 @@ export default function AdminLayout({
   }, [router]);
 
   if (!ready) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-light dark:bg-slate-950">
-        <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageLoader message="Checking admin access..." />;
   }
 
   const handleLogout = () => {

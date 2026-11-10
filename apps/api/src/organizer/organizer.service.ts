@@ -71,8 +71,16 @@ export class OrganizerService {
       };
     }
 
+    const profileDocuments = Array.isArray(profile.kycDocuments)
+      ? (profile.kycDocuments as Array<{ type?: string }>)
+      : [];
+    const hasRequiredDocuments = REQUIRED_DOCS.every((type) =>
+      profileDocuments.some((document) => document.type === type),
+    );
     const submitted = Boolean(
-      profile.businessName && profile.county && profile.phone && profile.kraPin,
+      profile.kraPin &&
+        hasRequiredDocuments &&
+        profile.paymentMethods.length > 0,
     );
 
     return {
@@ -83,7 +91,59 @@ export class OrganizerService {
     };
   }
 
+  async getVerificationStatus(userId: string) {
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { userId },
+      select: { kycStatus: true },
+    });
+    return { kycStatus: profile?.kycStatus ?? KycStatus.PENDING };
+  }
+
+  async listSubscriptionPlans() {
+    return this.prisma.subscriptionPlan.findMany({
+      where: { isActive: true },
+      orderBy: { priceKes: 'asc' },
+    });
+  }
+
+  async getSubscriptionOverview(userId: string) {
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        subscriptions: {
+          where: { status: 'ACTIVE' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { plan: true },
+        },
+      },
+    });
+    if (!profile) throw new NotFoundException('Organizer profile not found');
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const [eventsThisMonth, plans] = await Promise.all([
+      this.prisma.event.count({
+        where: {
+          organizerId: profile.id,
+          createdAt: { gte: startOfMonth, lt: startOfNextMonth },
+        },
+      }),
+      this.listSubscriptionPlans(),
+    ]);
+
+    return {
+      activeSubscription: profile.subscriptions[0] ?? null,
+      eventsThisMonth,
+      plans,
+    };
+  }
+
   async submitProfile(userId: string, dto: SubmitProfileDto) {
+    this.validatePaymentMethod(dto.paymentMethod);
+
     // ── Validate required documents (BUSINESS_PERMIT + NATIONAL_ID) ──
     const providedTypes = new Set(
       (dto.kycDocuments ?? []).map((d) => d.type),
@@ -122,26 +182,40 @@ export class OrganizerService {
       kycNotes: null,
     };
 
-    const existing = await this.prisma.organizerProfile.findUnique({
-      where: { userId },
-    });
-
-    if (!existing) {
-      return this.prisma.organizerProfile.create({
-        data: { userId, ...data },
+    const profile = await this.prisma.$transaction(async (tx) => {
+      const savedProfile = await tx.organizerProfile.upsert({
+        where: { userId },
+        create: { userId, ...data },
+        update: data,
       });
-    }
+
+      await tx.paymentMethod.deleteMany({
+        where: { organizerId: savedProfile.id },
+      });
+      await tx.paymentMethod.create({
+        data: {
+          organizerId: savedProfile.id,
+          methodType: dto.paymentMethod.methodType,
+          shortcode: dto.paymentMethod.shortcode ?? null,
+          accountNumber: dto.paymentMethod.accountNumber ?? null,
+          phoneNumber: dto.paymentMethod.phoneNumber ?? null,
+          displayLabel: dto.paymentMethod.displayLabel ?? null,
+          isActive: false,
+          isDefault: false,
+          c2bRegistered: false,
+        },
+      });
+
+      return savedProfile;
+    });
 
     await this.notifications.notifyAdmins(
       'New KYC Submission',
       `${data.businessName} has submitted their KYC documents for verification.`,
       'KYC_SUBMITTED',
-      { organizerId: existing.id }
+      { organizerId: profile.id },
     );
-    return this.prisma.organizerProfile.update({
-      where: { userId },
-      data,
-    });
+    return profile;
   }
 
   private normalizeKenyanPhone(raw: string): string {
@@ -171,34 +245,20 @@ export class OrganizerService {
   }
 
   async addPaymentMethod(userId: string, dto: AddPaymentMethodDto) {
+    this.validatePaymentMethod(dto);
+
     const profile = await this.prisma.organizerProfile.findUnique({
       where: { userId },
       select: { id: true },
     });
     if (!profile) throw new NotFoundException('Organizer profile not found');
 
-    if (
-      (dto.methodType === PaymentMethodType.PAYBILL ||
-        dto.methodType === PaymentMethodType.TILL) &&
-      !dto.shortcode
-    ) {
-      throw new BadRequestException('shortcode is required for Paybill/Till');
-    }
-    if (dto.methodType === PaymentMethodType.PAYBILL && !dto.accountNumber) {
-      throw new BadRequestException('accountNumber is required for Paybill');
-    }
-    if (
-      (dto.methodType === PaymentMethodType.POCHI ||
-        dto.methodType === PaymentMethodType.SEND_MONEY) &&
-      !dto.phoneNumber
-    ) {
-      throw new BadRequestException(
-        'phoneNumber is required for Pochi/Send Money',
-      );
-    }
-
-    return this.prisma.paymentMethod.create({
-      data: {
+    const method = await this.prisma.$transaction(async (tx) => {
+      await tx.paymentMethod.deleteMany({
+        where: { organizerId: profile.id },
+      });
+      return tx.paymentMethod.create({
+        data: {
         organizerId: profile.id,
         methodType: dto.methodType,
         shortcode: dto.shortcode ?? null,
@@ -208,8 +268,41 @@ export class OrganizerService {
         isActive: false,
         isDefault: false,
         c2bRegistered: false,
-      },
+        },
+      });
     });
+    await this.notifications.notifyAdmins(
+      'Payment Method Submitted',
+      `A payment method for organizer ${profile.id} is awaiting review.`,
+      'PAYMENT_METHOD_SUBMITTED',
+      { organizerId: profile.id, paymentMethodId: method.id },
+    );
+    return method;
+  }
+
+  private validatePaymentMethod(dto: AddPaymentMethodDto) {
+    if (
+      (dto.methodType === PaymentMethodType.PAYBILL ||
+        dto.methodType === PaymentMethodType.TILL) &&
+      !dto.shortcode?.trim()
+    ) {
+      throw new BadRequestException('shortcode is required for Paybill/Till');
+    }
+    if (
+      dto.methodType === PaymentMethodType.PAYBILL &&
+      !dto.accountNumber?.trim()
+    ) {
+      throw new BadRequestException('accountNumber is required for Paybill');
+    }
+    if (
+      (dto.methodType === PaymentMethodType.POCHI ||
+        dto.methodType === PaymentMethodType.SEND_MONEY) &&
+      !dto.phoneNumber?.trim()
+    ) {
+      throw new BadRequestException(
+        'phoneNumber is required for Pochi/Send Money',
+      );
+    }
   }
 
   async deletePaymentMethod(userId: string, id: string) {

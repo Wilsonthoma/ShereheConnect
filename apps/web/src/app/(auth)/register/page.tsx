@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { User, Mail, Lock, Eye, EyeOff, Phone } from 'lucide-react';
 import { AuthLayout, RoleSelector } from '@/components/auth';
+import { FullPageLoader } from '@/components/ui';
 import { authApi, ApiException } from '@/lib/api';
-import { setAuth, getHomeRoute, isLoggedIn } from '@/lib/auth';
+import { getHomeRoute, isLoggedIn } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 import {
@@ -168,62 +169,11 @@ function RegisterForm() {
         role,
       });
 
-      // If the backend auto-signs the user in, save both tokens.
-      // If it requires login afterward, res.accessToken will be undefined
-      // and we just redirect to login.
-      if (res.accessToken) {
-        setAuth(res.accessToken, res.refreshToken ?? null, {
-          id: res.user.id,
-          email: res.user.email,
-          phone: res.user.phone,
-          fullName: res.user.fullName,
-          role: res.user.role,
-        });
-
-        toast.success(
-          tr('auth.register.success.title', 'Account created!'),
-          role === 'ORGANIZER'
-            ? tr(
-                'auth.register.success.organizerBody',
-                'Check your email for the verification code.',
-              )
-            : tr(
-                'auth.register.success.attendeeBody',
-                'Welcome to ShereheConnect!',
-              ),
-        );
-
-        setTimeout(() => {
-          if (role === 'ORGANIZER' && res.user.emailVerified === false) {
-            router.replace(
-              `/verify-otp?email=${encodeURIComponent(res.user.email)}`,
-            );
-          } else {
-            router.replace(nextParam || getHomeRoute(res.user.role));
-          }
-        }, 800);
-      } else {
-        toast.success(
-          tr('auth.register.success.title', 'Account created!'),
-          role === 'ORGANIZER'
-            ? tr(
-                'auth.register.success.organizerBody',
-                'Please log in to verify your email.',
-              )
-            : tr(
-                'auth.register.success.attendeeBody',
-                'Please log in to continue.',
-              ),
-        );
-
-        setTimeout(() => {
-          router.replace(
-            `/login${
-              nextParam ? `?next=${encodeURIComponent(nextParam)}` : ''
-            }`,
-          );
-        }, 1200);
-      }
+      toast.success(
+        tr('auth.register.success.title', 'Account created!'),
+        'Check your email for the verification code.',
+      );
+      router.replace(`/verify-otp?email=${encodeURIComponent(res.user.email)}`);
     } catch (err) {
       const msg =
         err instanceof ApiException
@@ -465,11 +415,7 @@ function FormField({
 export default function RegisterPage() {
   return (
     <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-light dark:bg-dark-deep">
-          <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" />
-        </div>
-      }
+      fallback={<FullPageLoader message="Loading registration..." />}
     >
       <RegisterForm />
     </Suspense>

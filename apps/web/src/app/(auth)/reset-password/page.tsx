@@ -13,6 +13,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { AuthLayout } from '@/components/auth';
+import { FullPageLoader } from '@/components/ui';
 import { extendedAuthApi, ApiException } from '@/lib/api';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 
@@ -293,11 +294,7 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-light dark:bg-dark-deep">
-          <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" />
-        </div>
-      }
+      fallback={<FullPageLoader message="Loading password reset..." />}
     >
       <ResetPasswordForm />
     </Suspense>

@@ -77,22 +77,40 @@ export class OrganizerEventsService {
       throw new ForbiddenException('You need at least one approved payment method to sell tickets.');
     }
 
+    const ticketCapacity = dto.ticketTiers.reduce(
+      (total, tier) => total + tier.quantityTotal,
+      0,
+    );
+    const eventCapacity = Math.max(dto.maxAttendees ?? ticketCapacity, ticketCapacity);
+    if (
+      activeSub.plan.maxAttendeesEvent !== null &&
+      eventCapacity > activeSub.plan.maxAttendeesEvent
+    ) {
+      throw new ForbiddenException(
+        `Your ${activeSub.plan.code} plan allows a maximum of ${activeSub.plan.maxAttendeesEvent} attendees per event. Please upgrade to increase capacity.`,
+      );
+    }
+
     // ── GATE 2: Check Monthly Limit for the Plan ──
     if (activeSub.plan.maxEventsPerMonth !== null) {
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfNextMonth = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        1,
+      );
 
       const eventsThisMonth = await this.prisma.event.count({
         where: {
           organizerId,
-          createdAt: { gte: startOfMonth },
+          createdAt: { gte: startOfMonth, lt: startOfNextMonth },
         },
       });
 
       if (eventsThisMonth >= activeSub.plan.maxEventsPerMonth) {
         throw new ForbiddenException(
-          `You have reached your limit of ${activeSub.plan.maxEventsPerMonth} events per month on the ${activeSub.plan.name} plan. Please upgrade your subscription.`
+          `You have reached the limit of ${activeSub.plan.maxEventsPerMonth} events per month on the ${activeSub.plan.code} plan. Please upgrade to continue.`,
         );
       }
     }
@@ -116,7 +134,7 @@ export class OrganizerEventsService {
         longitude: dto.longitude ?? null,
         startsAt: new Date(dto.startsAt),
         endsAt: new Date(dto.endsAt),
-        maxAttendees: dto.maxAttendees ?? null,
+        maxAttendees: dto.maxAttendees ?? ticketCapacity,
         isFeatured: dto.isFeatured ?? false,
         eventFeatures: dto.eventFeatures ?? [],
         status: 'DRAFT',

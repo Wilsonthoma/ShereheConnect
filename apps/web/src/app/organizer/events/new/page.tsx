@@ -2,14 +2,27 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Trash2, Save, Clock, ShieldAlert, ArrowRight } from 'lucide-react';
 import { organizerEventsApi, TicketTier } from '@/lib/eventsApi';
 import { organizerApi } from '@/lib/organizerApi';
 import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
-import { ImageUploader } from '@/components/ui';
+import { FullPageLoader } from '@/components/ui';
 import { KENYA_COUNTIES, lookupCounty } from '@/lib/kenya-counties';
+
+const ImageUploader = dynamic(
+  () =>
+    import('@/components/ui/ImageUploader').then((module) => module.ImageUploader),
+  {
+    loading: () => (
+      <div className="flex h-32 w-full max-w-md items-center justify-center rounded-xl border-2 border-dashed border-slate-300 text-sm text-slate-500 dark:border-slate-600">
+        Loading image upload...
+      </div>
+    ),
+  },
+);
 
 const CATEGORIES = ['FESTIVAL', 'CONFERENCE', 'ENTERTAINMENT', 'SPORTS', 'ARTS', 'COMMUNITY', 'EDUCATION', 'BUSINESS'];
 const FEATURE_OPTIONS = [
@@ -22,6 +35,7 @@ const FEATURE_OPTIONS = [
 export default function CreateEventPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState('');
   const [step, setStep] = useState(1);
   
   // Gate state
@@ -33,16 +47,16 @@ export default function CreateEventPage() {
     title: '', description: '', categoryId: 'FESTIVAL', coverImageUrl: '',
     venueName: '', address: '', county: 'Nairobi',
     startsAt: '', endsAt: '', maxAttendees: '', isFeatured: false, eventFeatures: [] as string[],
-    ticketTiers: [{ name: 'Regular', priceKes: 0, quantityTotal: 100 }] as TicketTier[],
+    ticketTiers: [{ name: 'Regular', priceKes: 0, quantityTotal: 50 }] as TicketTier[],
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    organizerApi.getProfile()
-      .then((p) => {
-        setKycStatus(p.kycStatus);
-        if (p.kycStatus === 'VERIFIED') {
+    organizerApi.getVerificationStatus()
+      .then(({ kycStatus: status }) => {
+        setKycStatus(status);
+        if (status === 'VERIFIED') {
           setIsAllowed(true);
         }
       })
@@ -78,6 +92,16 @@ export default function CreateEventPage() {
       if (!form.address.trim()) e.address = 'Address is required';
       if (!form.startsAt) e.startsAt = 'Start date is required';
       if (!form.endsAt) e.endsAt = 'End date is required';
+      if (
+        form.startsAt &&
+        form.endsAt &&
+        new Date(form.endsAt).getTime() <= new Date(form.startsAt).getTime()
+      ) {
+        e.endsAt = 'End date must be after the start date';
+      }
+      if (form.maxAttendees && Number(form.maxAttendees) < 1) {
+        e.maxAttendees = 'Enter at least one attendee';
+      }
     }
     if (s === 3) {
       if (form.ticketTiers.some(t => !t.name.trim())) e.ticketTiers = 'All tiers must have a name';
@@ -98,7 +122,11 @@ export default function CreateEventPage() {
     if (Object.keys(e).length > 0) return toast.error('Invalid form', Object.values(e)[0]);
 
     const token = getToken();
-    if (!token) return;
+    if (!token) {
+      toast.error('Session expired', 'Please log in to create an event.');
+      router.replace(`/login?next=${encodeURIComponent('/organizer/events/new')}`);
+      return;
+    }
 
     setSaving(true);
     try {
@@ -119,7 +147,11 @@ export default function CreateEventPage() {
       toast.success('Event created!', 'Redirecting to details...');
       router.push(`/organizer/events/${event.id}`);
     } catch (err: any) {
-      toast.error('Save failed', err?.message ?? 'Unknown error');
+      const message = err?.message ?? 'Unknown error';
+      if (message.toLowerCase().includes('reached the limit')) {
+        setUpgradeMessage(message);
+      }
+      toast.error('Save failed', message);
     } finally {
       setSaving(false);
     }
@@ -128,11 +160,7 @@ export default function CreateEventPage() {
   const inputCls = (field: string) => `w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none transition-colors border ${errors[field] ? 'border-red-500' : 'border-slate-200 dark:border-slate-700 focus:border-gold'}`;
 
   if (gateLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="w-8 h-8 border-4 border-gold border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <FullPageLoader message="Checking event access..." />;
   }
 
   if (!isAllowed) {
@@ -181,6 +209,18 @@ export default function CreateEventPage() {
         <h1 className="heading-display text-2xl md:text-3xl text-slate-800 dark:text-slate-100 mb-1">Create Event</h1>
         <p className="text-sm text-slate-500">Provide all details. Fields marked * are required.</p>
       </div>
+
+      {upgradeMessage && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="text-sm">{upgradeMessage}</p>
+          <Link
+            href="/organizer/subscription"
+            className="inline-flex items-center gap-2 text-sm font-bold text-amber-800 hover:underline dark:text-amber-200"
+          >
+            View plans <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 mb-8">
         {[1, 2, 3].map((s) => (
@@ -252,13 +292,13 @@ export default function CreateEventPage() {
             <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">Ticket Tiers</h3>
-                <button onClick={() => updateForm('ticketTiers', [...form.ticketTiers, { name: '', priceKes: 0, quantityTotal: 50 }])} className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"><Plus className="w-3.5 h-3.5 inline mr-1"/> Add Tier</button>
+                <button type="button" onClick={() => updateForm('ticketTiers', [...form.ticketTiers, { name: '', priceKes: 0, quantityTotal: 50 }])} className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"><Plus className="w-3.5 h-3.5 inline mr-1"/> Add Tier</button>
               </div>
               {form.ticketTiers.map((tier, index) => (
                 <div key={index} className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">
                   <div className="flex justify-between">
                     <span className="text-xs font-bold text-slate-500 uppercase">Tier {index + 1}</span>
-                    {form.ticketTiers.length > 1 && <button onClick={() => updateForm('ticketTiers', form.ticketTiers.filter((_, i) => i !== index))} className="text-red-500"><Trash2 className="w-4 h-4" /></button>}
+                    {form.ticketTiers.length > 1 && <button type="button" onClick={() => updateForm('ticketTiers', form.ticketTiers.filter((_, i) => i !== index))} aria-label={`Remove ticket tier ${index + 1}`} className="text-red-500"><Trash2 className="w-4 h-4" /></button>}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input type="text" value={tier.name} onChange={(e) => updateTier(index, 'name', e.target.value)} placeholder="Tier name" className={inputCls('tierName')} />

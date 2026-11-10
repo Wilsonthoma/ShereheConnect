@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReviewKycDto } from './dto/review-kyc.dto';
 import { KycStatus } from '@prisma/client';
@@ -15,7 +19,13 @@ export class AdminOrganizersService {
     return this.prisma.organizerProfile.findMany({
       include: {
         user: {
-          select: { id: true, email: true, fullName: true, phone: true },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            phone: true,
+            status: true,
+          },
         },
         paymentMethods: true,
       },
@@ -30,7 +40,15 @@ export class AdminOrganizersService {
     const profile = await this.prisma.organizerProfile.findUnique({
       where: { id },
       include: {
-        user: { select: { id: true, email: true, fullName: true, phone: true } },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            phone: true,
+            status: true,
+          },
+        },
         paymentMethods: true,
         subscriptions: { include: { plan: true } },
       },
@@ -40,6 +58,27 @@ export class AdminOrganizersService {
   }
 
   async reviewKyc(id: string, dto: ReviewKycDto, adminId: string) {
+    const rejectionReasons = [
+      'Incomplete or invalid documentation',
+      'Business details could not be verified',
+      'Suspected fraudulent information',
+      'Does not meet platform requirements',
+    ];
+    if (
+      dto.kycStatus === KycStatus.REJECTED &&
+      !rejectionReasons.includes(dto.notes ?? '')
+    ) {
+      throw new BadRequestException('Select a valid KYC rejection reason.');
+    }
+    if (
+      dto.kycStatus === KycStatus.NEEDS_REVISION &&
+      !dto.notes?.trim()
+    ) {
+      throw new BadRequestException(
+        'Feedback is required when requesting changes.',
+      );
+    }
+
     const profile = await this.prisma.organizerProfile.findUnique({
       where: { id },
     });
@@ -107,12 +146,83 @@ export class AdminOrganizersService {
   async approvePaymentMethod(id: string) {
     const method = await this.prisma.paymentMethod.findUnique({
       where: { id },
+      include: { organizer: { select: { userId: true } } },
     });
     if (!method) throw new NotFoundException('Payment method not found');
 
-    return this.prisma.paymentMethod.update({
+    const updated = await this.prisma.paymentMethod.update({
       where: { id },
       data: { isActive: true },
     });
+    await this.notifications.create({
+      userId: method.organizer.userId,
+      title: 'Payment Method Approved',
+      message: 'Your payment method has been approved and can now receive ticket payments.',
+      type: 'PAYMENT_METHOD_APPROVED',
+      metadata: { paymentMethodId: id },
+    });
+    return updated;
+  }
+
+  async rejectPaymentMethod(id: string, reason: string) {
+    const method = await this.prisma.paymentMethod.findUnique({
+      where: { id },
+      include: { organizer: { select: { userId: true } } },
+    });
+    if (!method) throw new NotFoundException('Payment method not found');
+    if (!reason?.trim()) {
+      throw new BadRequestException('A rejection reason is required.');
+    }
+
+    await this.prisma.paymentMethod.delete({ where: { id } });
+    await this.notifications.create({
+      userId: method.organizer.userId,
+      title: 'Payment Method Rejected',
+      message: `Your payment method was rejected. Reason: ${reason.trim()}`,
+      type: 'PAYMENT_METHOD_REJECTED',
+      metadata: { paymentMethodId: id },
+    });
+    return { success: true };
+  }
+
+  async suspend(id: string, reason: string, adminId: string) {
+    const allowedReasons = [
+      'Violation of platform terms',
+      'Fraudulent or misleading KYC documents',
+      'Multiple attendee complaints',
+      'Failure to fulfil event obligations',
+    ];
+    if (!allowedReasons.includes(reason)) {
+      throw new BadRequestException('Select a valid suspension reason.');
+    }
+
+    const profile = await this.prisma.organizerProfile.findUnique({
+      where: { id },
+      select: { id: true, userId: true, businessName: true },
+    });
+    if (!profile) throw new NotFoundException('Organizer not found');
+    if (profile.userId === adminId) {
+      throw new BadRequestException('You cannot suspend your own account.');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: profile.userId },
+        data: { status: 'SUSPENDED', suspensionReason: reason },
+      }),
+      this.prisma.organizerProfile.update({
+        where: { id },
+        data: { suspensionReason: reason },
+      }),
+    ]);
+    await this.notifications.create({
+      userId: profile.userId,
+      title: 'Account Suspended',
+      message: `Your organizer account has been suspended. Reason: ${reason}`,
+      type: 'ACCOUNT_SUSPENDED',
+      metadata: { organizerId: id },
+    });
+
+    return { id, status: 'SUSPENDED', suspensionReason: reason };
   }
 }

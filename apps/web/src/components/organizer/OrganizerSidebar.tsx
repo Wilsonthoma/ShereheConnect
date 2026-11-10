@@ -46,6 +46,7 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
   const initials = user ? getInitials(user.fullName) : 'U';
   
   const [kycStatus, setKycStatus] = useState<string | null>(null);
+  const isSuspended = user?.status === 'SUSPENDED';
 
   useEffect(() => {
     organizerApi.getProfile()
@@ -110,15 +111,15 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
         <div className="h-px bg-slate-200 dark:bg-slate-800 my-3" />
 
         {/* Dynamic Onboarding/Verified Button */}
-        {kycStatus === 'VERIFIED' ? (
+        {isSuspended ? (
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-red-600 bg-red-50 dark:bg-red-950/30">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>Account Suspended</span>
+          </div>
+        ) : kycStatus === 'VERIFIED' ? (
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30">
             <ShieldCheck className="w-4 h-4 shrink-0" />
             <span>Verified</span>
-          </div>
-        ) : kycStatus === 'SUSPENDED' || kycStatus === 'REJECTED' ? (
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-red-600 bg-red-50 dark:bg-red-950/30">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>Action Required</span>
           </div>
         ) : kycStatus === 'PENDING' ? (
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/30">
@@ -132,7 +133,7 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
             className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
               isActive('/organizer/onboarding')
                 ? 'bg-brand-gradient text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-gold hover:bg-slate-100 dark:hover:bg-slate-800'
+                : 'text-orange-700 bg-orange-50 dark:text-orange-300 dark:bg-orange-950/30 hover:bg-orange-100 dark:hover:bg-orange-950/50'
             }`}
           >
             <ShieldCheck className="w-4 h-4 shrink-0" />

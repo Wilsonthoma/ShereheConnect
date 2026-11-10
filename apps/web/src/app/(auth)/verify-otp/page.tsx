@@ -5,10 +5,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
 import { AuthLayout } from '@/components/auth';
-import { VerifyOtpInput } from '@/components/ui';
+import { FullPageLoader, VerifyOtpInput } from '@/components/ui';
 import { otpApi, ApiException } from '@/lib/api';
 import { toast } from '@/lib/toast';
-import { getHomeRoute } from '@/lib/auth';
 
 const RESEND_COOLDOWN = 60;
 
@@ -60,17 +59,11 @@ function VerifyOtpContent() {
     try {
       const res = await otpApi.verifyOtp(email, otp);
       setVerified(true);
-      toast.success('Email verified!', 'Your account is now active.');
+      toast.success('Email verified', 'Please log in to continue.');
 
       setTimeout(() => {
-        // Fetch user from localStorage to determine home route
-        try {
-          const u = JSON.parse(localStorage.getItem('attendee_user') || '{}');
-          router.replace(u.role ? getHomeRoute(u.role) : '/dashboard');
-        } catch {
-          router.replace('/dashboard');
-        }
-      }, 1200);
+        router.replace('/login?verified=1');
+      }, 900);
     } catch (err) {
       const msg =
         err instanceof ApiException ? err.message : 'Verification failed. Try again.';
@@ -89,15 +82,8 @@ function VerifyOtpContent() {
     try {
       const res = await otpApi.resendOtp(email);
       if (res.alreadyVerified) {
-        toast.info('Already verified', 'Redirecting to your dashboard...');
-        setTimeout(() => {
-          try {
-            const u = JSON.parse(localStorage.getItem('attendee_user') || '{}');
-            router.replace(u.role ? getHomeRoute(u.role) : '/dashboard');
-          } catch {
-            router.replace('/dashboard');
-          }
-        }, 800);
+        toast.info('Already verified', 'Please log in to continue.');
+        router.replace('/login?verified=1');
         return;
       }
       toast.success('New code sent!', `Check ${email} for the 6-digit code.`);
@@ -125,7 +111,7 @@ function VerifyOtpContent() {
           <p className="text-sm text-white/70 leading-relaxed mb-3">
             Your email has been verified successfully.
           </p>
-          <p className="text-xs text-white/50">Taking you to your dashboard...</p>
+          <p className="text-xs text-white/50">Taking you to login...</p>
         </div>
       </AuthLayout>
     );
@@ -206,11 +192,7 @@ function VerifyOtpContent() {
 export default function VerifyOtpPage() {
   return (
     <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-dark-deep">
-          <div className="w-10 h-10 border-4 border-gold border-t-transparent rounded-full animate-spin" />
-        </div>
-      }
+      fallback={<FullPageLoader message="Loading verification..." />}
     >
       <VerifyOtpContent />
     </Suspense>

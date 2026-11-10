@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { adminOrganizersApi } from '@/lib/adminOrganizersApi';
 import { toast } from '@/lib/toast';
+import { FullPageLoader } from '@/components/ui';
 
 export default function AdminOrganizerDetailPage() {
   const params = useParams();
@@ -18,11 +19,11 @@ export default function AdminOrganizerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notes, setNotes] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
   
   const [showActions, setShowActions] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; type: string; fileName: string } | null>(null);
   
-  // Suspension Modal State
   const [suspendModalOpen, setSuspendModalOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
 
@@ -41,18 +42,41 @@ export default function AdminOrganizerDetailPage() {
   useEffect(() => { if (id) load(); }, [id]);
 
   const handleKyc = async (status: string, reason?: string) => {
-    if (status === 'REJECTED' && !notes.trim()) {
-      return toast.error('Reason required', 'Please enter a reason in the notes box.');
+    if (status === 'REJECTED' && !rejectionReason) {
+      return toast.error('Reason required', 'Please select a rejection reason.');
     }
-    if (status === 'SUSPENDED' && !reason) {
-      return toast.error('Reason required', 'Please select a reason for suspension.');
+    if (status === 'NEEDS_REVISION' && !notes.trim()) {
+      return toast.error('Feedback required', 'Please enter the changes requested.');
     }
     
     setBusy(true);
     try {
-      await adminOrganizersApi.reviewKyc(id, status, reason || notes);
+      await adminOrganizersApi.reviewKyc(
+        id,
+        status,
+        status === 'REJECTED' ? rejectionReason : notes,
+      );
       toast.success('KYC Updated', `Status set to ${status.replace('_', ' ')}.`);
       setShowActions(false);
+      setSuspendModalOpen(false);
+      setSuspendReason('');
+      await load();
+    } catch (err: any) {
+      toast.error('Action failed', err?.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSuspend = async () => {
+    if (!suspendReason) {
+      return toast.error('Reason required', 'Please select a suspension reason.');
+    }
+
+    setBusy(true);
+    try {
+      await adminOrganizersApi.suspend(id, suspendReason);
+      toast.success('Account suspended');
       setSuspendModalOpen(false);
       setSuspendReason('');
       await load();
@@ -76,15 +100,31 @@ export default function AdminOrganizerDetailPage() {
     }
   };
 
-  if (loading) return <div className="p-20 text-center animate-spin text-gold">Loading...</div>;
+  const handlePaymentRejection = async (paymentId: string) => {
+    if (!notes.trim()) {
+      return toast.error('Reason required', 'Enter a reason in the review feedback.');
+    }
+    setBusy(true);
+    try {
+      await adminOrganizersApi.rejectPaymentMethod(paymentId, notes.trim());
+      toast.success('Payment method rejected');
+      await load();
+    } catch (err: any) {
+      toast.error('Action failed', err?.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) return <FullPageLoader message="Loading organizer details..." />;
   if (!data) return <div className="p-20 text-center">Not found</div>;
 
   const isVerified = data.kycStatus === 'VERIFIED';
-  const isSuspended = data.kycStatus === 'SUSPENDED';
+  const isSuspended = data.user?.status === 'SUSPENDED';
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <button onClick={() => router.push('/admin/organizers')} className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-gold transition-colors">
+      <button onClick={() => router.push('/admin/organizers')} className="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 hover:text-gold dark:hover:text-gold transition-colors">
         <ArrowLeft className="w-4 h-4" /> Back to list
       </button>
 
@@ -115,7 +155,7 @@ export default function AdminOrganizerDetailPage() {
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
             <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-4">KYC Documents</h2>
             {(!data.kycDocuments || data.kycDocuments.length === 0) ? (
-              <p className="text-sm text-slate-500">No documents uploaded</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">No documents uploaded</p>
             ) : (
               <ul className="space-y-3">
                 {data.kycDocuments.map((doc: any, i: number) => {
@@ -131,7 +171,7 @@ export default function AdminOrganizerDetailPage() {
                       </div>
                       <button 
                         onClick={() => setPreviewDoc(doc)}
-                        className="p-2 rounded-lg bg-white dark:bg-slate-700 text-slate-400 hover:text-gold hover:bg-gold/10 transition-colors shadow-sm"
+                        className="p-2 rounded-lg bg-white dark:bg-slate-700 text-slate-400 hover:text-gold dark:hover:text-gold hover:bg-gold/10 transition-colors shadow-sm"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
@@ -151,11 +191,16 @@ export default function AdminOrganizerDetailPage() {
                   <p className="text-xs text-slate-500 dark:text-slate-400">{pm.shortcode || pm.phoneNumber || pm.accountNumber}</p>
                 </div>
                 {pm.isActive ? (
-                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded">Approved</span>
+                  <span className="text-[0.65rem] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded">Approved</span>
                 ) : (
-                  <button onClick={() => handlePayment(pm.id)} disabled={busy} className="text-xs font-bold text-white bg-gold px-3 py-1.5 rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors">
-                    Approve
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => handlePayment(pm.id)} disabled={busy} className="text-[0.65rem] font-bold uppercase tracking-wide text-white bg-gold px-3 py-1.5 rounded-lg hover:bg-orange-600 disabled:opacity-50 transition-colors">
+                      Approve
+                    </button>
+                    <button onClick={() => handlePaymentRejection(pm.id)} disabled={busy} className="text-[0.65rem] font-bold uppercase tracking-wide text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg disabled:opacity-50 transition-colors">
+                      Reject
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
@@ -178,7 +223,7 @@ export default function AdminOrganizerDetailPage() {
                 </p>
                 <button
                   onClick={() => setShowActions(true)}
-                  className="text-xs font-bold text-slate-500 hover:text-red-500 transition-colors underline decoration-slate-300 dark:decoration-slate-600 underline-offset-4"
+                  className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors underline decoration-slate-300 dark:decoration-slate-600 underline-offset-4"
                 >
                   Revoke, Suspend, or Change Status
                 </button>
@@ -193,8 +238,23 @@ export default function AdminOrganizerDetailPage() {
                   placeholder="Reason / feedback (required for rejection)..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl text-sm mb-4 h-20 resize-none bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-gold"
+                  className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl text-sm mb-4 h-20 resize-none bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-gold transition-colors"
                 />
+
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5">
+                  Rejection reason
+                </label>
+                <select
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl text-sm mb-4 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-gold"
+                >
+                  <option value="">Select a reason...</option>
+                  <option value="Incomplete or invalid documentation">Incomplete or invalid documentation</option>
+                  <option value="Business details could not be verified">Business details could not be verified</option>
+                  <option value="Suspected fraudulent information">Suspected fraudulent information</option>
+                  <option value="Does not meet platform requirements">Does not meet platform requirements</option>
+                </select>
 
                 <div className="flex flex-col gap-2">
                   {data.kycStatus !== 'VERIFIED' && (
@@ -213,9 +273,9 @@ export default function AdminOrganizerDetailPage() {
                   </button>
                   
                   <div className="pt-2 mt-2 border-t border-slate-200 dark:border-slate-800">
-                    <button onClick={() => setSuspendModalOpen(true)} disabled={busy} className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-bold hover:bg-slate-800 hover:text-white hover:border-slate-800 disabled:opacity-50 transition-colors">
+                    {!isSuspended && <button onClick={() => setSuspendModalOpen(true)} disabled={busy} className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-bold hover:bg-slate-800 hover:text-white hover:border-slate-800 disabled:opacity-50 transition-colors">
                       <AlertTriangle className="w-3.5 h-3.5" /> Suspend Account
-                    </button>
+                    </button>}
                   </div>
                 </div>
               </>
@@ -224,13 +284,12 @@ export default function AdminOrganizerDetailPage() {
         </div>
       </div>
 
-      {/* Suspension Modal */}
       {suspendModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !busy && setSuspendModalOpen(false)} />
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6">
+          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-800">
             <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-2">Suspend Account</h3>
-            <p className="text-sm text-slate-500 mb-4">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
               You are about to suspend <strong>{data.businessName}</strong>.
             </p>
 
@@ -240,7 +299,7 @@ export default function AdminOrganizerDetailPage() {
             <select
               value={suspendReason}
               onChange={(e) => setSuspendReason(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-gold text-sm mb-4"
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-gold text-sm mb-4 transition-colors"
             >
               <option value="">Select a reason...</option>
               <option value="Violation of platform terms">Violation of platform terms</option>
@@ -253,7 +312,7 @@ export default function AdminOrganizerDetailPage() {
               <button onClick={() => setSuspendModalOpen(false)} disabled={busy} className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                 Cancel
               </button>
-              <button onClick={() => handleKyc('SUSPENDED', suspendReason)} disabled={busy || !suspendReason} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors">
+              <button onClick={handleSuspend} disabled={busy || !suspendReason} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors">
                 {busy ? 'Suspending...' : 'Confirm Suspension'}
               </button>
             </div>
@@ -261,7 +320,6 @@ export default function AdminOrganizerDetailPage() {
         </div>
       )}
 
-      {/* Popup Modal Viewer */}
       {previewDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity" onClick={() => setPreviewDoc(null)} />
@@ -269,9 +327,9 @@ export default function AdminOrganizerDetailPage() {
             <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
               <div>
                 <h3 className="font-bold text-slate-800 dark:text-slate-100">{previewDoc.type.replace('_', ' ')}</h3>
-                <p className="text-xs text-slate-500">{previewDoc.fileName}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{previewDoc.fileName}</p>
               </div>
-              <button onClick={() => setPreviewDoc(null)} className="p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-red-500 transition-colors">
+              <button onClick={() => setPreviewDoc(null)} className="p-2 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-red-500 dark:hover:text-red-400 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>

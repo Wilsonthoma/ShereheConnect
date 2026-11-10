@@ -172,12 +172,14 @@ export interface AuthUserResponse {
 
 export interface LoginResponse {
   user: AuthUserResponse;
-  accessToken: string;
-  refreshToken?: string;
+  accessToken: string | null;
+  refreshToken?: string | null;
 }
 
-export interface RegisterResponse extends LoginResponse {
-  user: AuthUserResponse & { requiresVerification?: boolean };
+export interface RegisterResponse {
+  user: Pick<AuthUserResponse, 'id' | 'email' | 'phone' | 'fullName' | 'role'>;
+  message: string;
+  requiresVerification: boolean;
 }
 
 export const authApi = {

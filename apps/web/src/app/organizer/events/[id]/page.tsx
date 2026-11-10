@@ -15,7 +15,7 @@ import {
   MapPin,
   Edit,
   Trash2,
-  Copy,
+  Loader2,
 } from 'lucide-react';
 import {
   organizerEventsApi,
@@ -50,7 +50,15 @@ export default function OrganizerEventDetailPage() {
 
   const load = async () => {
     const token = getToken();
-    if (!token || !id) return;
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+    if (!token) {
+      setLoading(false);
+      router.replace(`/login?next=${encodeURIComponent(`/organizer/events/${id}`)}`);
+      return;
+    }
     try {
       const data = await organizerEventsApi.detail(token, id);
       setEvent(data);
@@ -64,6 +72,58 @@ export default function OrganizerEventDetailPage() {
   useEffect(() => {
     load();
   }, [id]);
+
+  const handleSubmitForApproval = async () => {
+    const token = getToken();
+    if (!token) {
+      router.replace(`/login?next=${encodeURIComponent(`/organizer/events/${id}`)}`);
+      return;
+    }
+
+    setBusy('submit');
+    try {
+      await organizerEventsApi.submit(token, id);
+      toast.success('Event submitted for approval');
+      await load();
+    } catch (err: any) {
+      toast.error('Could not submit event', err?.message ?? 'Please try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleCancelEvent = async () => {
+    if (!window.confirm(`Cancel "${event.title}"?`)) return;
+    const token = getToken();
+    if (!token) return router.replace('/login');
+
+    setBusy('cancel');
+    try {
+      await organizerEventsApi.cancel(token, id, 'Cancelled by organizer');
+      toast.success('Event cancelled');
+      await load();
+    } catch (err: any) {
+      toast.error('Could not cancel event', err?.message ?? 'Please try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDeleteDraft = async () => {
+    if (!window.confirm(`Delete draft "${event.title}"? This cannot be undone.`)) return;
+    const token = getToken();
+    if (!token) return router.replace('/login');
+
+    setBusy('delete');
+    try {
+      await organizerEventsApi.delete(token, id);
+      toast.success('Draft deleted');
+      router.replace('/organizer/events');
+    } catch (err: any) {
+      toast.error('Could not delete draft', err?.message ?? 'Please try again.');
+      setBusy(null);
+    }
+  };
 
   if (loading) return <FullPageLoader message="Loading event..." />;
   if (!event) return <div className="p-20 text-center">Event not found</div>;
@@ -211,22 +271,28 @@ export default function OrganizerEventDetailPage() {
                   <Edit className="w-4 h-4" /> Edit Event
                 </Link>
                 <button
-                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
+                  type="button"
+                  onClick={handleSubmitForApproval}
+                  disabled={busy !== null}
+                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 transition-all"
                 >
-                  Submit for Approval
+                  {busy === 'submit' && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {busy === 'submit' ? 'Submitting...' : 'Submit for Approval'}
                 </button>
               </>
             )}
 
             {['LIVE', 'ONGOING', 'APPROVED'].includes(event.status) && (
-              <button className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 text-sm font-semibold hover:bg-amber-500 hover:text-white transition-colors">
-                Cancel Event
+              <button type="button" onClick={handleCancelEvent} disabled={busy !== null} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 text-sm font-semibold hover:bg-amber-500 hover:text-white disabled:opacity-50 transition-colors">
+                {busy === 'cancel' && <Loader2 className="h-4 w-4 animate-spin" />}
+                {busy === 'cancel' ? 'Cancelling...' : 'Cancel Event'}
               </button>
             )}
 
             {event.status === 'DRAFT' && (
-              <button className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-500 hover:text-white transition-colors">
-                <Trash2 className="w-4 h-4" /> Delete Draft
+              <button type="button" onClick={handleDeleteDraft} disabled={busy !== null} className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-semibold hover:bg-red-500 hover:text-white disabled:opacity-50 transition-colors">
+                {busy === 'delete' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {busy === 'delete' ? 'Deleting...' : 'Delete Draft'}
               </button>
             )}
 

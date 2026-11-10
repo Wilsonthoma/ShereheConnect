@@ -30,6 +30,15 @@ export class AdminOrganizersController {
     return this.service.getOne(id);
   }
 
+  @Patch(':id/suspend')
+  suspend(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { reason: string },
+    @Req() req: any,
+  ) {
+    return this.service.suspend(id, body.reason, req.user.id);
+  }
+
   @Patch(':id/kyc')
   reviewKyc(
     @Param('id', ParseUUIDPipe) id: string,
@@ -42,5 +51,13 @@ export class AdminOrganizersController {
   @Patch('payment-methods/:id/approve')
   approvePaymentMethod(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.approvePaymentMethod(id);
+  }
+
+  @Patch('payment-methods/:id/reject')
+  rejectPaymentMethod(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { reason: string },
+  ) {
+    return this.service.rejectPaymentMethod(id, body.reason);
   }
 }
