@@ -1,22 +1,30 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
-import { Manrope, Kaushan_Script } from 'next/font/google';
+import localFont from 'next/font/local';
+import { Kaushan_Script, Varela_Round } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/lib/theme';
 import { ToastProvider } from '@/components/providers/ToastProvider';
 import { LanguageProvider } from '@/lib/i18n/LanguageContext';
 
-const manrope = Manrope({
+// H1 headings — Kaushan Script
+const kaushan = Kaushan_Script({
   subsets: ['latin'],
-  variable: '--font-sans',
-  weight: ['300', '400', '500', '600', '700', '800'],
+  variable: '--font-display', // This matches the CSS!
+  weight: '400',
   display: 'swap',
 });
 
-const kaushan = Kaushan_Script({
-  subsets: ['latin'],
-  variable: '--font-display',
-  weight: '400',
+// Coddy Round — H2 to H6 & UI
+const coddyRound = localFont({
+  src: [
+    { path: '../fonts/coddy/CoddyRound-Regular.ttf', weight: '400', style: 'normal' },
+    { path: '../fonts/coddy/CoddyRound-Medium.ttf', weight: '500', style: 'normal' },
+    { path: '../fonts/coddy/CoddyRound-SemiBold.ttf', weight: '600', style: 'normal' },
+    { path: '../fonts/coddy/CoddyRound-Bold.ttf', weight: '700', style: 'normal' },
+    { path: '../fonts/coddy/CoddyRound-ExtraBold.ttf', weight: '800', style: 'normal' },
+  ],
+  variable: '--font-sans', // This matches the CSS!
   display: 'swap',
 });
 
@@ -25,52 +33,26 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
-    { media: '(prefers-color-scheme: dark)', color: '#020617' },
+    { media: '(prefers-color-scheme: light)', color: '#FFFFFF' },
+    { media: '(prefers-color-scheme: dark)', color: '#2B2B2B' },
   ],
 };
 
 export const metadata: Metadata = {
-  title: 'ShereheConnect — Discover Events Across Kenya',
+  title: 'ShereheConnect',
   description: 'Find, book, and attend events near you.',
 };
 
-const themeInitScript = `
-(function() {
-  try {
-    var theme = localStorage.getItem('sherehe-theme') || 'system';
-    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var shouldBeDark = theme === 'dark' || (theme === 'system' && prefersDark);
-    if (shouldBeDark) {
-      document.documentElement.classList.add('dark');
-    }
-  } catch (e) {}
-})();
-`;
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      className={`${manrope.variable} ${kaushan.variable}`}
+      className={`${coddyRound.variable} ${kaushan.variable}`}
       suppressHydrationWarning
     >
-      <head>
-        <Script
-          id="theme-init"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{ __html: themeInitScript }}
-        />
-      </head>
-      <body className="antialiased min-h-screen bg-light dark:bg-slate-950 text-dark dark:text-slate-100">
+      <body className="antialiased min-h-screen bg-white dark:bg-[#2B2B2B] text-slate-800 dark:text-slate-100">
         <ThemeProvider>
-          <LanguageProvider>
-            {children}
-          </LanguageProvider>
+          <LanguageProvider>{children}</LanguageProvider>
           <ToastProvider />
         </ThemeProvider>
       </body>
