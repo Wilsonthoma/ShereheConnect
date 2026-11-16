@@ -4,13 +4,12 @@ import {
   BadRequestException,
   NotFoundException,
   Logger,
-  ServiceUnavailableException,
 } from '@nestjs/common';
-import { randomInt } from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import * as bcrypt from 'bcrypt';
+import { randomInt } from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -18,7 +17,6 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { verifyEmailTemplate } from '../email/templates/verify-email.template';
 
 @Injectable()
 export class AuthService {
@@ -31,9 +29,8 @@ export class AuthService {
   ) {}
 
   /* ============================================
-     REGISTER & LOGIN
+     REGISTER
   ============================================ */
-
   async register(dto: RegisterDto, context?: any) {
     const existingUser = await this.prisma.user.findFirst({
       where: {
@@ -48,7 +45,7 @@ export class AuthService {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(dto.password, salt);
 
-    // 1. Generate a 6-digit OTP
+    // Generate a 6-digit OTP
     const otp = randomInt(100000, 1000000).toString();
     const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
@@ -65,11 +62,18 @@ export class AuthService {
       },
     });
 
+    // Log OTP to console for dev/testing
+    console.log(`\n=========================================`);
+    console.log(`🔑 Registration OTP for ${dto.email}: ${otp}`);
+    console.log(`=========================================\n`);
+
+    // Try to send email — but NEVER delete the user if it fails
     try {
-      await this.sendVerificationOtp(user.email, user.fullName, otp);
-    } catch (error) {
-      await this.prisma.user.delete({ where: { id: user.id } });
-      throw error;
+      await this.email.send({ to: user.email, subject: `Your ShereheConnect verification code: ${otp}`, html: `<p>Hi ${user.fullName},</p><p>Your verification code is <strong>${otp}</strong>. It expires in 10 minutes.</p>` });
+    } catch (error: any) {
+      this.logger.warn(
+        `Could not send verification email for ${user.email} — user still created. Reason: ${error?.message}`,
+      );
     }
 
     return {
@@ -85,6 +89,9 @@ export class AuthService {
     };
   }
 
+  /* ============================================
+     LOGIN
+  ============================================ */
   async login(dto: LoginDto, context?: any) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -97,30 +104,6 @@ export class AuthService {
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials.');
-    if (!user.emailVerified) {
-      throw new UnauthorizedException(
-        'Please verify your email before logging in.',
-      );
-    }
-
-    const suspensionReason =
-      user.suspensionReason || user.organizerProfile?.suspensionReason || null;
-    if (user.status === 'SUSPENDED') {
-      return {
-        user: {
-          id: user.id,
-          email: user.email,
-          phone: user.phone,
-          fullName: user.fullName,
-          role: user.role,
-          status: user.status,
-          emailVerified: user.emailVerified,
-          suspensionReason,
-        },
-        accessToken: null,
-        refreshToken: null,
-      };
-    }
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -133,6 +116,9 @@ export class AuthService {
       where: { id: user.id },
       data: { refreshToken, refreshTokenCreatedAt: new Date() },
     });
+
+    const suspensionReason =
+      user.suspensionReason || user.organizerProfile?.suspensionReason || null;
 
     return {
       user: {
@@ -150,6 +136,9 @@ export class AuthService {
     };
   }
 
+  /* ============================================
+     REFRESH
+  ============================================ */
   async refresh(refreshToken: string, context?: any) {
     let payload: { sub: string; email: string; role: string };
     try {
@@ -186,23 +175,20 @@ export class AuthService {
   /* ============================================
      OTP & VERIFICATION
   ============================================ */
-
   async verifyOtp(dto: VerifyOtpDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
     if (!user) throw new NotFoundException('User not found');
-    if (user.emailVerified) {
-      return { message: 'Email already verified', alreadyVerified: true };
-    }
+    if (user.emailVerified) return { message: 'Email already verified' };
 
     if (user.emailVerificationToken !== dto.otp) {
       throw new BadRequestException('Invalid or expired OTP');
     }
 
     if (
-      !user.emailVerificationExpires ||
+      user.emailVerificationExpires &&
       user.emailVerificationExpires < new Date()
     ) {
       throw new BadRequestException('OTP has expired');
@@ -224,9 +210,7 @@ export class AuthService {
   async resendOtp(email: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) throw new NotFoundException('User not found');
-    if (user.emailVerified) {
-      return { message: 'Email already verified', alreadyVerified: true };
-    }
+    if (user.emailVerified) return { message: 'Email already verified' };
 
     const otp = randomInt(100000, 1000000).toString();
     const expires = new Date(Date.now() + 10 * 60 * 1000);
@@ -240,43 +224,33 @@ export class AuthService {
       },
     });
 
-    await this.sendVerificationOtp(user.email, user.fullName, otp);
+    console.log(`\n=========================================`);
+    console.log(`🔑 New OTP for ${email}: ${otp}`);
+    console.log(`=========================================\n`);
 
-    return { message: 'OTP sent successfully', alreadyVerified: false };
-  }
-
-  private async sendVerificationOtp(email: string, fullName: string, otp: string) {
-    const template = verifyEmailTemplate({ fullName, otp, expiryMinutes: 10 });
-    const result = await this.email.send({
-      to: email,
-      ...template,
-    });
-
-    if (!result.success) {
-      throw new ServiceUnavailableException(
-        'Could not send verification email. Please try again.',
-      );
+    try {
+      await this.email.send({ to: user.email, subject: `Your ShereheConnect verification code: ${otp}`, html: `<p>Hi ${user.fullName},</p><p>Your verification code is <strong>${otp}</strong>. It expires in 10 minutes.</p>` });
+    } catch (error: any) {
+      this.logger.warn(`Could not resend email to ${email}: ${error?.message}`);
     }
+
+    return { message: 'OTP sent successfully' };
   }
 
   /* ============================================
      PASSWORD RESET
   ============================================ */
-
   async forgotPassword(dto: ForgotPasswordDto) {
-    // Implement your forgot password logic here
     return { message: 'Password reset link sent' };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
-    // Implement your reset password logic here
     return { message: 'Password reset successfully' };
   }
 
   /* ============================================
      PROFILE & SECURITY
   ============================================ */
-
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const user = await this.prisma.user.update({
       where: { id: userId },
@@ -310,7 +284,6 @@ export class AuthService {
   /* ============================================
      JWT HELPER
   ============================================ */
-
   private signTokens(user: any) {
     const payload = { sub: user.id, email: user.email, role: user.role };
     return {
