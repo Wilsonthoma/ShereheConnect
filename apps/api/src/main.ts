@@ -11,8 +11,6 @@ async function bootstrap() {
   // ============================================
   // Resolve the uploads directory robustly
   // ============================================
-  // Try several candidate paths, use the first one that exists.
-  // This works regardless of whether the app runs from src/ or dist/.
   const candidates = [
     join(process.cwd(), 'uploads'),                 // when run from apps/api
     join(__dirname, '..', 'uploads'),               // when built to dist/
@@ -37,11 +35,26 @@ async function bootstrap() {
     }),
   );
 
+  // ============================================
+  // CORS Configuration for Local & Vercel
+  // ============================================
   app.enableCors({
-    origin: process.env.WEB_URL ?? 'http://localhost:3000',
+    // Allow localhost and any Vercel deployment URL
+    origin: [
+      'http://localhost:3000',
+      process.env.WEB_URL,
+      /\.vercel\.app$/, // Regex to allow all vercel.app domains
+    ].filter(Boolean), // Remove undefined values
     credentials: true,
   });
 
-  await app.listen(process.env.PORT ?? 4000);
+  // ============================================
+  // Port Binding (Vercel injects PORT, fallback to 4000)
+  // ============================================
+  const port = process.env.PORT ?? 4000;
+  
+  await app.listen(port);
+  
+  console.log(`🚀 Application is running on port: ${port}`);
 }
 bootstrap();
