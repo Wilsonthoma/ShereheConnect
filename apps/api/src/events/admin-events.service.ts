@@ -165,4 +165,4 @@ export class AdminEventsService {
 
     return updated;
   }
-}
+} 

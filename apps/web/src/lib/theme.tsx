@@ -16,6 +16,12 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 const STORAGE_KEY = 'sherehe-theme';
 
+// Coddy theme colors for mobile browser UI
+const THEME_COLORS = {
+  light: '#FFFFFF',
+  dark: '#2B2B2B',
+};
+
 function getSystemTheme(): ResolvedTheme {
   if (typeof window === 'undefined') return 'light';
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -23,6 +29,16 @@ function getSystemTheme(): ResolvedTheme {
 
 function resolveTheme(theme: Theme): ResolvedTheme {
   return theme === 'system' ? getSystemTheme() : theme;
+}
+
+function applyTheme(resolved: ResolvedTheme) {
+  document.documentElement.classList.toggle('dark', resolved === 'dark');
+  
+  // Update the mobile browser top bar color (Coddy theme)
+  const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+  if (metaThemeColor) {
+    metaThemeColor.setAttribute('content', THEME_COLORS[resolved]);
+  }
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -35,7 +51,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setThemeState(stored);
     const r = resolveTheme(stored);
     setResolved(r);
-    document.documentElement.classList.toggle('dark', r === 'dark');
+    applyTheme(r);
     setMounted(true);
 
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -44,7 +60,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       if (current === 'system') {
         const nr = getSystemTheme();
         setResolved(nr);
-        document.documentElement.classList.toggle('dark', nr === 'dark');
+        applyTheme(nr);
       }
     };
     mq.addEventListener('change', handler);
@@ -56,7 +72,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEY, t);
     const r = resolveTheme(t);
     setResolved(r);
-    document.documentElement.classList.toggle('dark', r === 'dark');
+    applyTheme(r);
   }, []);
 
   const toggleTheme = useCallback(() => {
