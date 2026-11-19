@@ -3,8 +3,8 @@ import { IsNotEmpty, IsString, Matches, IsIn } from 'class-validator';
 export class InitiateSubscriptionDto {
   @IsString()
   @IsNotEmpty()
-  @IsIn(['PRO', 'BUSINESS'], {
-    message: 'Plan code must be either PRO or BUSINESS for paid upgrades.',
+  @IsIn(['STARTER', 'PRO', 'BUSINESS'], {
+    message: 'Plan code must be STARTER, PRO, or BUSINESS for paid upgrades.',
   })
   planCode: string;
 
