@@ -14,7 +14,7 @@ import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { KycDocument, KycDocType } from '@/lib/organizerApi';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 interface DocumentUploaderProps {
   docType: KycDocType;

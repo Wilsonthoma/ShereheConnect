@@ -1,5 +1,12 @@
 import { api } from './api';
 import { getToken } from './auth';
+import {
+  isValidKenyanMpesaPhone,
+  normalizeKenyanPhone,
+  SubscriptionPlanCode,
+} from './paymentsApi';
+
+export { isValidKenyanMpesaPhone, normalizeKenyanPhone };
 
 export type OrganizerType = 'INDIVIDUAL' | 'BUSINESS' | 'NGO';
 export type KycStatus = 'PENDING' | 'VERIFIED' | 'REJECTED' | 'NEEDS_REVISION';
@@ -51,7 +58,7 @@ export interface OrganizerProfile {
 
 export interface SubscriptionPlan {
   id: string;
-  code: string;
+  code: SubscriptionPlanCode;
   name: string;
   priceKes: number;
   billingInterval: 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
@@ -90,7 +97,7 @@ export interface AddPaymentMethodInput {
 }
 
 export interface InitiateSubscriptionStkPushInput {
-  planCode: string;
+  planCode: SubscriptionPlanCode;
   phoneNumber: string;
 }
 
@@ -106,21 +113,6 @@ export interface InitiateSubscriptionStkPushResponse {
   ResponseCode?: string;
   responseDescription?: string;
   ResponseDescription?: string;
-}
-
-export function normalizeKenyanPhone(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  if (digits.startsWith('254') && digits.length === 12) return digits;
-  if (digits.startsWith('0') && digits.length === 10) return `254${digits.slice(1)}`;
-  if ((digits.startsWith('7') || digits.length === 9 && (digits.startsWith('7') || digits.startsWith('1')))) {
-    return `254${digits}`;
-  }
-  return digits;
-}
-
-export function isValidKenyanMpesaPhone(phone: string): boolean {
-  const normalized = normalizeKenyanPhone(phone);
-  return /^254[17]\d{8}$/.test(normalized);
 }
 
 function token(): string | null {

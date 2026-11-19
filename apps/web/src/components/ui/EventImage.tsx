@@ -12,7 +12,7 @@ interface EventImageProps {
   className?: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 function resolveImageUrl(src?: string | null): string | null {
   if (!src) return null;

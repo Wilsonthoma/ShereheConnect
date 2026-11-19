@@ -5,7 +5,7 @@ import { UploadCloud, X, Loader2 } from 'lucide-react';
 import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 async function compressImage(file: File, maxWidth = 1600, quality = 0.82): Promise<File> {
   if (file.type === 'image/gif' || file.size < 300 * 1024) return file;
