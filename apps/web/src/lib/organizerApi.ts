@@ -89,6 +89,40 @@ export interface AddPaymentMethodInput {
   displayLabel?: string;
 }
 
+export interface InitiateSubscriptionStkPushInput {
+  planCode: string;
+  phoneNumber: string;
+}
+
+export interface InitiateSubscriptionStkPushResponse {
+  message?: string;
+  checkoutRequestId?: string;
+  CheckoutRequestID?: string;
+  merchantRequestId?: string;
+  MerchantRequestID?: string;
+  customerMessage?: string;
+  CustomerMessage?: string;
+  responseCode?: string;
+  ResponseCode?: string;
+  responseDescription?: string;
+  ResponseDescription?: string;
+}
+
+export function normalizeKenyanPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('254') && digits.length === 12) return digits;
+  if (digits.startsWith('0') && digits.length === 10) return `254${digits.slice(1)}`;
+  if ((digits.startsWith('7') || digits.length === 9 && (digits.startsWith('7') || digits.startsWith('1')))) {
+    return `254${digits}`;
+  }
+  return digits;
+}
+
+export function isValidKenyanMpesaPhone(phone: string): boolean {
+  const normalized = normalizeKenyanPhone(phone);
+  return /^254[17]\d{8}$/.test(normalized);
+}
+
 function token(): string | null {
   return getToken();
 }
@@ -115,6 +149,16 @@ export const organizerApi = {
   deletePaymentMethod: (id: string) =>
     api.delete<{ success: boolean }>(
       `/organizer/payment-methods/${id}`,
+      token(),
+    ),
+
+  initiateSubscriptionStkPush: (dto: InitiateSubscriptionStkPushInput) =>
+    api.post<InitiateSubscriptionStkPushResponse>(
+      '/payments/subscriptions/stk-push',
+      {
+        planCode: dto.planCode,
+        phoneNumber: normalizeKenyanPhone(dto.phoneNumber),
+      },
       token(),
     ),
 };

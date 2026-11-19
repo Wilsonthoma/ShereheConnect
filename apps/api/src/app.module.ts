@@ -12,6 +12,7 @@ import { UsersModule } from './admin/users/users.module';
 import { AdminOrganizersModule } from './admin/organizers/admin-organizers.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrganizerModule } from './organizer/organizer.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { OrganizerModule } from './organizer/organizer.module';
     AdminOrganizersModule,
     NotificationsModule,
     OrganizerModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
