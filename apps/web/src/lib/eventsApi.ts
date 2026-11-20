@@ -13,6 +13,9 @@ export type EventStatus =
   | 'CANCELLED'
   | 'REJECTED';
 
+export type GroupCategory = 'FAMILY' | 'COUPLE' | 'FRIENDS' | 'TABLE';
+export type GroupPricingMode = 'PER_OCCUPANT' | 'BUNDLE_FIXED';
+
 export interface TicketTier {
   id?: string;
   name: string;
@@ -21,6 +24,10 @@ export interface TicketTier {
   quantityTotal: number;
   quantitySold?: number;
   quantityReserved?: number;
+  isGroupSubgroup?: boolean;
+  groupCategory?: GroupCategory | string | null;
+  occupantsPerUnit?: number;
+  pricingMode?: GroupPricingMode | string;
   salesStartAt?: string;
   salesEndAt?: string;
   sortOrder?: number;
@@ -59,6 +66,8 @@ export interface EventItem {
   status: EventStatus;
   rejectionReason?: string | null;
   maxAttendees?: number | null;
+  totalTicketsAvailable?: number | null;
+  allowGroupBookings?: boolean;
   isFeatured?: boolean;
   eventFeatures?: string[];
   category?: EventCategory | null;
@@ -91,6 +100,8 @@ export interface CreateEventPayload {
   startsAt: string;
   endsAt: string;
   maxAttendees?: number;
+  totalTicketsAvailable?: number;
+  allowGroupBookings?: boolean;
   isFeatured?: boolean;
   eventFeatures?: string[];
   ticketTiers: TicketTier[];
@@ -109,6 +120,8 @@ export interface UpdateEventPayload {
   startsAt?: string;
   endsAt?: string;
   maxAttendees?: number;
+  totalTicketsAvailable?: number;
+  allowGroupBookings?: boolean;
   isFeatured?: boolean;
   eventFeatures?: string[];
   ticketTiers?: TicketTier[];
@@ -119,6 +132,7 @@ export interface AttendeeListItem {
   reference: string;
   status: string;
   quantity: number;
+  occupantsCount?: number | null;
   totalAmountKes: number;
   createdAt: string;
   confirmedAt?: string | null;
@@ -131,11 +145,23 @@ export interface AttendeeListItem {
   tier: {
     name: string;
     priceKes: number;
+    isGroupSubgroup?: boolean;
+    groupCategory?: string | null;
+    occupantsPerUnit?: number;
+    pricingMode?: string;
   };
   ticket: {
     ticketCode: string;
     status: string;
   } | null;
+  eTickets?: Array<{
+    id: string;
+    ticketIndex: number;
+    ticketCode: string;
+    qrToken: string;
+    status: string;
+    checkedInAt?: string | null;
+  }>;
 }
 
 export interface AttendeeListResponse {

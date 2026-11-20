@@ -3,25 +3,37 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search, MapPin, Calendar, ChevronDown } from 'lucide-react';
+import { Search, MapPin, Calendar, ChevronDown, Users } from 'lucide-react';
 import { publicEventsApi, EventItem } from '@/lib/eventsApi';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { FullPageLoader } from '@/components/ui';
 
 const CATEGORIES = [
-  { code: 'FESTIVAL', label: 'Festivals' },
-  { code: 'CONFERENCE', label: 'Conferences' },
-  { code: 'ENTERTAINMENT', label: 'Entertainment' },
-  { code: 'SPORTS', label: 'Sports' },
-  { code: 'ARTS', label: 'Arts & Culture' },
-  { code: 'COMMUNITY', label: 'Community' },
-  { code: 'EDUCATION', label: 'Workshops' },
-  { code: 'BUSINESS', label: 'Business' },
+  { code: 'FESTIVAL', labelKey: 'events.cat.festival' as const },
+  { code: 'CONFERENCE', labelKey: 'events.cat.conference' as const },
+  { code: 'ENTERTAINMENT', labelKey: 'events.cat.entertainment' as const },
+  { code: 'SPORTS', labelKey: 'events.cat.sports' as const },
+  { code: 'ARTS', labelKey: 'events.cat.arts' as const },
+  { code: 'COMMUNITY', labelKey: 'events.cat.community' as const },
+  { code: 'EDUCATION', labelKey: 'events.cat.education' as const },
+  { code: 'BUSINESS', labelKey: 'events.cat.business' as const },
 ];
 
 const COUNTIES = [
-  'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Malindi',
-  'Kitale', 'Garissa', 'Kakamega', 'Nyeri', 'Meru', 'Machakos', 'Kisii',
+  'Nairobi',
+  'Mombasa',
+  'Kisumu',
+  'Nakuru',
+  'Eldoret',
+  'Thika',
+  'Malindi',
+  'Kitale',
+  'Garissa',
+  'Kakamega',
+  'Nyeri',
+  'Meru',
+  'Machakos',
+  'Kisii',
 ];
 
 const BANNER_SLIDES = [
@@ -56,10 +68,13 @@ function BannerCarousel() {
   return (
     <div
       className="relative w-full overflow-hidden bg-slate-900"
-      onMouseEnter={() => { pausedRef.current = true; }}
-      onMouseLeave={() => { pausedRef.current = false; }}
+      onMouseEnter={() => {
+        pausedRef.current = true;
+      }}
+      onMouseLeave={() => {
+        pausedRef.current = false;
+      }}
     >
-      {/* Slides */}
       {BANNER_SLIDES.map((slide, i) => (
         <div
           key={i}
@@ -77,7 +92,6 @@ function BannerCarousel() {
         </div>
       ))}
 
-      {/* Spacer governs height */}
       <img
         src={BANNER_SLIDES[0].src}
         alt=""
@@ -85,16 +99,16 @@ function BannerCarousel() {
         aria-hidden="true"
       />
 
-      {/* Dots */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 z-20">
         {BANNER_SLIDES.map((_, i) => (
           <button
             key={i}
+            type="button"
             onClick={() => setCurrent(i)}
             aria-label={`Go to slide ${i + 1}`}
             className={`h-2 rounded-full transition-all duration-300 ${
               i === current
-                ? 'w-8 bg-gradient-to-r from-[#f59e0b] to-[#ec6408]'
+                ? 'w-8 bg-gradient-to-r from-[#29ABE2] to-[#1A8CC4]'
                 : 'w-2 bg-white/60 hover:bg-white'
             }`}
           />
@@ -107,19 +121,16 @@ function BannerCarousel() {
 export default function EventsPage() {
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get('category');
-  const { t, language } = useLanguage();
-
-  const tr = (key: string, fallback: string) => {
-    const val = t(key as any);
-    return val === key ? fallback : val;
-  };
+  const { t } = useLanguage();
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(
+    initialCategory,
+  );
   const [county, setCounty] = useState('');
 
   useEffect(() => {
@@ -136,14 +147,14 @@ export default function EventsPage() {
         setEvents(res.items);
         setTotal(res.total);
       } catch (err: any) {
-        setError(err?.message || 'Failed to load events');
+        setError(err?.message || t('events.loading'));
       } finally {
         setLoading(false);
       }
     };
     const timeout = setTimeout(load, 300);
     return () => clearTimeout(timeout);
-  }, [search, selectedCategory, county]);
+  }, [search, selectedCategory, county, t]);
 
   const clearFilters = () => {
     setSelectedCategory(null);
@@ -154,64 +165,78 @@ export default function EventsPage() {
   const hasFilters = Boolean(selectedCategory || county || search);
 
   return (
-    <main className="min-h-screen bg-light dark:bg-slate-950 transition-colors">
-      {/* ===== HERO ===== */}
-      <section className="bg-gradient-to-br from-slate-900 to-slate-800 py-16 md:py-20">
+    <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] transition-colors">
+      <section className="bg-gradient-to-br from-slate-900 to-[#2B2B2B] py-16 md:py-20">
         <div className="container-fluid text-center">
-          <h1 className="heading-display heading-lg text-white mb-4">
-            {tr('events.hero.title', 'Discover Events')}
+          <h1
+            style={{ fontFamily: "'Kaushan Script', cursive" }}
+            className="text-4xl sm:text-5xl text-white mb-4"
+          >
+            {t('events.hero.title')}
           </h1>
-          <p className="text-lg text-white/70 mb-8 max-w-2xl mx-auto">
-            {tr('events.hero.subtitle', 'Find festivals, conferences, concerts, and more happening across Kenya.')}
+          <p className="text-lg text-white/75 mb-8 max-w-2xl mx-auto">
+            {t('events.hero.subtitle')}
           </p>
           <div className="max-w-2xl mx-auto">
-            <div className="flex items-center gap-3 bg-white dark:bg-slate-800 rounded-full shadow-2xl px-5 py-3 border border-transparent dark:border-slate-700">
-              <Search className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+            <label htmlFor="events-search-input" className="sr-only">
+              {t('events.search.placeholder')}
+            </label>
+            <div className="flex items-center gap-3 bg-white dark:bg-[#3A3A3A] rounded-full shadow-2xl px-5 py-3 border border-transparent dark:border-slate-700">
+              <Search className="w-5 h-5 text-slate-400 dark:text-slate-400" />
               <input
+                id="events-search-input"
                 type="text"
-                placeholder={tr('events.search.placeholder', 'Search events, venues, or organizers...')}
+                placeholder={t('events.search.placeholder')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="flex-1 bg-transparent outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                className="flex-1 bg-transparent outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400"
               />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ===== FULL-BLEED BANNER STRIP ===== */}
       <BannerCarousel />
 
-      {/* ===== BODY ===== */}
       <section className="py-10 md:py-14">
         <div className="container-fluid max-w-7xl">
-
-          {/* ===== FILTER BAR ===== */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
+                <label htmlFor="events-category-filter" className="sr-only">
+                  {t('events.filter.allCategories')}
+                </label>
                 <select
+                  id="events-category-filter"
                   value={selectedCategory || ''}
                   onChange={(e) => setSelectedCategory(e.target.value || null)}
-                  className="appearance-none pl-4 pr-10 py-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 font-medium cursor-pointer hover:border-gold/50 focus:border-gold focus:outline-none transition-colors"
+                  className="appearance-none pl-4 pr-10 py-2.5 rounded-lg bg-white dark:bg-[#3A3A3A] border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 font-medium cursor-pointer hover:border-[#29ABE2]/60 focus:border-[#29ABE2] focus:outline-none transition-colors"
                 >
-                  <option value="">All Categories</option>
+                  <option value="">{t('events.filter.allCategories')}</option>
                   {CATEGORIES.map((cat) => (
-                    <option key={cat.code} value={cat.code}>{cat.label}</option>
+                    <option key={cat.code} value={cat.code}>
+                      {t(cat.labelKey)}
+                    </option>
                   ))}
                 </select>
                 <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
 
               <div className="relative">
+                <label htmlFor="events-county-filter" className="sr-only">
+                  {t('events.filter.allCounties')}
+                </label>
                 <select
+                  id="events-county-filter"
                   value={county}
                   onChange={(e) => setCounty(e.target.value)}
-                  className="appearance-none pl-9 pr-10 py-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 font-medium cursor-pointer hover:border-gold/50 focus:border-gold focus:outline-none transition-colors"
+                  className="appearance-none pl-9 pr-10 py-2.5 rounded-lg bg-white dark:bg-[#3A3A3A] border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 font-medium cursor-pointer hover:border-[#29ABE2]/60 focus:border-[#29ABE2] focus:outline-none transition-colors"
                 >
-                  <option value="">All Counties</option>
+                  <option value="">{t('events.filter.allCounties')}</option>
                   {COUNTIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
                 <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -220,23 +245,27 @@ export default function EventsPage() {
 
               {hasFilters && (
                 <button
+                  type="button"
                   onClick={clearFilters}
-                  className="text-sm text-slate-500 hover:text-orange-500 font-medium transition-colors px-2"
+                  className="text-sm text-slate-500 dark:text-slate-300 hover:text-[#1A8CC4] dark:hover:text-[#29ABE2] font-medium transition-colors px-2"
                 >
-                  Clear
+                  {t('events.filter.clear')}
                 </button>
               )}
             </div>
 
             {!loading && !error && (
               <p className="text-sm text-slate-500 dark:text-slate-400 shrink-0">
-                {total} {total !== 1 ? 'events' : 'event'} found
+                {total}{' '}
+                {total === 1
+                  ? t('events.result.singular')
+                  : t('events.result.plural')}{' '}
+                {t('events.result.found')}
               </p>
             )}
           </div>
 
-          {/* ===== STATES ===== */}
-          {loading && <FullPageLoader message="Loading events..." />}
+          {loading && <FullPageLoader message={t('events.loading')} />}
 
           {error && (
             <div className="text-center py-20">
@@ -245,22 +274,26 @@ export default function EventsPage() {
           )}
 
           {!loading && !error && events.length === 0 && (
-            <div className="text-center py-20 max-w-md mx-auto rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-6">
-              <Calendar className="w-16 h-16 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
-              <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-2">No events found</h3>
-              <p className="text-sm text-slate-500 mb-6">Try adjusting your search or filters.</p>
+            <div className="text-center py-20 max-w-md mx-auto rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] px-6">
+              <Calendar className="w-16 h-16 text-slate-300 dark:text-slate-500 mx-auto mb-4" />
+              <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-2">
+                {t('events.empty.title')}
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-300 mb-6">
+                {t('events.empty.subtitle')}
+              </p>
               {hasFilters && (
                 <button
+                  type="button"
                   onClick={clearFilters}
-                  className="inline-flex items-center justify-center px-5 py-2 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
+                  className="inline-flex items-center justify-center px-5 py-2 rounded-full bg-gradient-to-r from-[#29ABE2] to-[#1A8CC4] text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
                 >
-                  Clear filters
+                  {t('events.filter.clear')}
                 </button>
               )}
             </div>
           )}
 
-          {/* ===== GRID ===== */}
           {!loading && !error && events.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {events.map((event) => (
@@ -274,18 +307,49 @@ export default function EventsPage() {
   );
 }
 
+function getTierUnitPrice(
+  tier: NonNullable<EventItem['ticketTiers']>[number],
+): number {
+  const occupants =
+    typeof tier.occupantsPerUnit === 'number' && tier.occupantsPerUnit > 0
+      ? tier.occupantsPerUnit
+      : tier.groupCategory === 'COUPLE'
+        ? 2
+        : 1;
+  if (tier.isGroupSubgroup && tier.pricingMode === 'PER_OCCUPANT') {
+    return tier.priceKes * occupants;
+  }
+  return tier.priceKes;
+}
+
 function PublicEventCard({ event }: { event: EventItem }) {
-  const { language } = useLanguage();
-  const cheapestTier = event.ticketTiers?.filter((t) => t.isActive !== false).sort((a, b) => a.priceKes - b.priceKes)[0];
+  const { t, language } = useLanguage();
+  const localeTag = language === 'sw' ? 'sw-KE' : 'en-KE';
+  const activeTiers = (event.ticketTiers ?? []).filter(
+    (tier) => tier.isActive !== false,
+  );
+  const cheapestTier = [...activeTiers].sort(
+    (a, b) => getTierUnitPrice(a) - getTierUnitPrice(b),
+  )[0];
+  const hasGroupTier =
+    Boolean(event.allowGroupBookings) ||
+    activeTiers.some((tier) => Boolean(tier.isGroupSubgroup));
+
   const date = new Date(event.startsAt);
-  const dateStr = date.toLocaleDateString(language === 'sw' ? 'sw-KE' : 'en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
+  const dateStr = date.toLocaleDateString(localeTag, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  const cheapestPrice = cheapestTier ? getTierUnitPrice(cheapestTier) : null;
 
   return (
     <Link
       href={`/events/${event.slug}`}
-      className="group relative flex flex-col h-full bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-800 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] hover:shadow-[0_0_0_2px_#f59e0b,0_12px_20px_-8px_rgba(0,0,0,0.08)] hover:border-[#f59e0b] hover:-translate-y-1.5 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+      className="group relative flex flex-col h-full bg-white dark:bg-[#3A3A3A] rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] hover:shadow-[0_0_0_2px_#29ABE2,0_12px_20px_-8px_rgba(0,0,0,0.08)] hover:border-[#29ABE2] hover:-translate-y-1.5 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
     >
-      <div className="relative w-full h-[220px] sm:h-[240px] md:h-[260px] shrink-0 overflow-hidden bg-slate-100 dark:bg-slate-800 z-[1]">
+      <div className="relative w-full h-[220px] sm:h-[240px] md:h-[260px] shrink-0 overflow-hidden bg-slate-100 dark:bg-[#2B2B2B] z-[1]">
         {event.coverImageUrl ? (
           <img
             src={event.coverImageUrl}
@@ -293,44 +357,64 @@ function PublicEventCard({ event }: { event: EventItem }) {
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-600 ease-out group-hover:scale-105"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-amber-500 to-orange-600" />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#29ABE2] to-[#1A8CC4]" />
         )}
 
-        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-b from-transparent to-white dark:to-slate-900 pointer-events-none z-[5]" />
+        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-b from-transparent to-white dark:to-[#3A3A3A] pointer-events-none z-[5]" />
 
-        {event.category && (
-          <span className="absolute top-3 left-3 z-20 px-2.5 py-1 rounded-full bg-[#fef3c7] text-[#d97706] text-[0.65rem] font-semibold uppercase tracking-wide shadow-sm">
-            {event.category.name}
-          </span>
-        )}
+        <div className="absolute top-3 left-3 z-20 flex flex-wrap gap-1.5">
+          {event.category && (
+            <span className="px-2.5 py-1 rounded-full bg-[#E0F2FE] text-[#1A8CC4] text-[0.65rem] font-semibold uppercase tracking-wide shadow-sm">
+              {event.category.name}
+            </span>
+          )}
+          {hasGroupTier && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/85 text-white text-[0.65rem] font-semibold uppercase tracking-wide shadow-sm">
+              <Users className="w-3 h-3 text-[#29ABE2]" />
+              {t('events.card.groupBadge')}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-col flex-grow px-4 pt-3 pb-3 bg-white dark:bg-slate-900 relative z-10">
-        <h3 className="font-bold text-base text-slate-800 dark:text-slate-100 leading-snug mb-2 line-clamp-2 transition-colors duration-200 group-hover:text-[#ec6408]">
+      <div className="flex flex-col flex-grow px-4 pt-3 pb-3 bg-white dark:bg-[#3A3A3A] relative z-10">
+        <h3 className="font-bold text-base text-slate-800 dark:text-slate-100 leading-snug mb-2 line-clamp-2 transition-colors duration-200 group-hover:text-[#1A8CC4] dark:group-hover:text-[#29ABE2]">
           {event.title}
         </h3>
 
-        <div className="flex flex-col gap-1 mb-3 text-[0.75rem] text-slate-500 dark:text-slate-400">
+        <div className="flex flex-col gap-1 mb-3 text-[0.75rem] text-slate-500 dark:text-slate-300">
           <span className="flex items-center gap-1.5">
-            <MapPin className="w-3 h-3 text-[#f59e0b] shrink-0" strokeWidth={2.5} />
-            <span className="truncate">{event.venueName}, {event.county}</span>
+            <MapPin
+              className="w-3 h-3 text-[#29ABE2] shrink-0"
+              strokeWidth={2.5}
+            />
+            <span className="truncate">
+              {event.venueName}, {event.county}
+            </span>
           </span>
           <span className="flex items-center gap-1.5">
-            <Calendar className="w-3 h-3 text-[#f59e0b] shrink-0" strokeWidth={2.5} />
+            <Calendar
+              className="w-3 h-3 text-[#29ABE2] shrink-0"
+              strokeWidth={2.5}
+            />
             <span className="truncate">{dateStr}</span>
           </span>
         </div>
 
-        <div className="mt-auto flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
-          {cheapestTier ? (
-            <span className="text-base font-extrabold text-[#ec6408]">
-              From KES {cheapestTier.priceKes.toLocaleString()}
+        <div className="mt-auto flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700">
+          {cheapestPrice !== null ? (
+            <span className="text-base font-extrabold text-[#1A8CC4] dark:text-[#29ABE2]">
+              {cheapestPrice === 0
+                ? t('common.free')
+                : t('events.card.fromKes', {
+                    amount: cheapestPrice.toLocaleString(localeTag),
+                  })}
             </span>
           ) : (
             <span className="text-xs text-slate-400">—</span>
           )}
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 group-hover:text-[#ec6408] transition-colors">
-            View →
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-200 group-hover:text-[#1A8CC4] dark:group-hover:text-[#29ABE2] transition-colors">
+            {t('events.card.view')} →
           </span>
         </div>
       </div>

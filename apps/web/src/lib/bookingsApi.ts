@@ -7,7 +7,7 @@ export type BookingStatus =
   | 'CANCELLED'
   | 'CHECKED_IN';
 
-export type TicketStatus = 'ISSUED' | 'SCANNED' | 'REVOKED';
+export type TicketStatus = 'ISSUED' | 'CHECKED_IN' | 'SCANNED' | 'REVOKED';
 
 export interface CreateBookingPayload {
   eventId: string;
@@ -18,10 +18,17 @@ export interface CreateBookingPayload {
 export interface BookingFilterParams {
   status?: BookingStatus;
   eventId?: string;
+  q?: string;
 }
 
 export interface CancelBookingPayload {
   reason?: string;
+}
+
+export interface CheckInTicketPayload {
+  ticketCode?: string;
+  qrToken?: string;
+  eventId?: string;
 }
 
 export interface BookingEventSummary {
@@ -40,14 +47,21 @@ export interface BookingTicketTierSummary {
   id: string;
   name: string;
   priceKes: number;
+  isGroupSubgroup?: boolean;
+  groupCategory?: string | null;
+  occupantsPerUnit?: number;
+  pricingMode?: 'PER_OCCUPANT' | 'BUNDLE_FIXED' | string;
 }
 
 export interface BookingETicket {
   id: string;
   bookingId: string;
+  ticketIndex?: number;
   ticketCode: string;
   qrToken: string;
+  guestName?: string | null;
   status: TicketStatus;
+  checkedInAt?: string | null;
   scannedAt?: string | null;
   createdAt: string;
 }
@@ -74,6 +88,7 @@ export interface BookingRecord {
   eventId: string;
   ticketTierId: string;
   quantity: number;
+  occupantsCount?: number | null;
   unitPriceKes: number;
   totalAmountKes: number;
   status: BookingStatus;
@@ -86,8 +101,44 @@ export interface BookingRecord {
   event: BookingEventSummary;
   ticketTier: BookingTicketTierSummary;
   eTicket?: BookingETicket | null;
+  eTickets?: BookingETicket[];
   payments?: BookingPaymentSummary[];
   attendee?: BookingAttendeeSummary;
+}
+
+export interface EventBookingsSummary {
+  totalBookings: number;
+  totalOccupants: number;
+  confirmedBookings: number;
+  confirmedOccupants: number;
+  pendingBookings: number;
+  pendingOccupants: number;
+  checkedInTickets: number;
+  grossRevenueKes: number;
+}
+
+export interface EventBookingsResponse {
+  eventId: string;
+  eventTitle: string;
+  summary: EventBookingsSummary;
+  items: BookingRecord[];
+}
+
+export interface CheckInTicketResponse {
+  alreadyCheckedIn: boolean;
+  ticket: BookingETicket & {
+    booking?: {
+      id: string;
+      bookingReference: string;
+      occupantsCount?: number | null;
+      attendee?: { id: string; fullName: string; phone?: string | null };
+      ticketTier?: {
+        id: string;
+        name: string;
+        groupCategory?: string | null;
+      };
+    };
+  };
 }
 
 const API_BASE_URL =
@@ -160,6 +211,7 @@ export const bookingsApi = {
     const params = new URLSearchParams();
     if (filter?.status) params.set('status', filter.status);
     if (filter?.eventId) params.set('eventId', filter.eventId);
+    if (filter?.q) params.set('q', filter.q);
     const query = params.toString();
     return request<BookingRecord[]>(`/bookings/my${query ? `?${query}` : ''}`);
   },
@@ -181,9 +233,23 @@ export const bookingsApi = {
     );
   },
 
-  listEventBookings(eventId: string): Promise<BookingRecord[]> {
-    return request<BookingRecord[]>(
-      `/bookings/event/${encodeURIComponent(eventId)}`,
+  listEventBookings(
+    eventId: string,
+    filter?: BookingFilterParams,
+  ): Promise<EventBookingsResponse> {
+    const params = new URLSearchParams();
+    if (filter?.status) params.set('status', filter.status);
+    if (filter?.q) params.set('q', filter.q);
+    const query = params.toString();
+    return request<EventBookingsResponse>(
+      `/bookings/event/${encodeURIComponent(eventId)}${query ? `?${query}` : ''}`,
     );
+  },
+
+  checkInTicket(payload: CheckInTicketPayload): Promise<CheckInTicketResponse> {
+    return request<CheckInTicketResponse>('/bookings/tickets/check-in', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 };

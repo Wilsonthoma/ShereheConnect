@@ -5,9 +5,11 @@ import {
   IsBoolean,
   IsISO8601,
   IsUUID,
+  IsEnum,
   Min,
   MaxLength,
 } from 'class-validator';
+import { GroupPricingMode } from '@prisma/client';
 
 export class TicketTierDto {
   /**
@@ -34,6 +36,24 @@ export class TicketTierDto {
   @IsInt()
   @Min(1)
   quantityTotal: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isGroupSubgroup?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  groupCategory?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  occupantsPerUnit?: number;
+
+  @IsOptional()
+  @IsEnum(GroupPricingMode)
+  pricingMode?: GroupPricingMode;
 
   @IsOptional()
   @IsISO8601()

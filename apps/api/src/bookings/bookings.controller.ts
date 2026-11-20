@@ -12,6 +12,7 @@ import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingFilterDto } from './dto/booking-filter.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
+import { CheckInTicketDto } from './dto/check-in-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -41,8 +42,21 @@ export class BookingsController {
   listEventBookings(
     @CurrentUser() user: any,
     @Param('eventId') eventId: string,
+    @Query() filter: BookingFilterDto,
   ) {
-    return this.bookingsService.listEventBookingsForOrganizer(eventId, user.id);
+    return this.bookingsService.listEventBookingsForOrganizer(
+      eventId,
+      user.id,
+      user.role,
+      filter,
+    );
+  }
+
+  @Post('tickets/check-in')
+  @UseGuards(RolesGuard)
+  @Roles('ORGANIZER', 'ADMIN')
+  checkInTicket(@CurrentUser() user: any, @Body() dto: CheckInTicketDto) {
+    return this.bookingsService.checkInTicket(user.id, user.role, dto);
   }
 
   @Get(':id')

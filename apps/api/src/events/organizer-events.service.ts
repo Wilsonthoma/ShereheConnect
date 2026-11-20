@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
+import { GroupPricingMode } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -47,9 +48,29 @@ export class OrganizerEventsService {
     return category?.id ?? null;
   }
 
+  private normalizeTierGroupFields(tier: any) {
+    const isGroupSubgroup = Boolean(tier.isGroupSubgroup);
+    const occupantsPerUnit = isGroupSubgroup
+      ? Math.max(1, Number(tier.occupantsPerUnit ?? 1))
+      : 1;
+    const pricingMode: GroupPricingMode = isGroupSubgroup
+      ? tier.pricingMode === GroupPricingMode.BUNDLE_FIXED ||
+        tier.pricingMode === 'BUNDLE_FIXED'
+        ? GroupPricingMode.BUNDLE_FIXED
+        : GroupPricingMode.PER_OCCUPANT
+      : GroupPricingMode.PER_OCCUPANT;
+
+    return {
+      isGroupSubgroup,
+      groupCategory: isGroupSubgroup ? (tier.groupCategory ?? null) : null,
+      occupantsPerUnit,
+      pricingMode,
+    };
+  }
+
   async create(userId: string, dto: CreateEventDto) {
     const organizerId = await this.getOrganizerProfileId(userId);
-    
+
     // ── GATE 1: Check KYC, Subscription, and Payment Method ──
     const profile = await this.prisma.organizerProfile.findUnique({
       where: { id: organizerId },
@@ -65,23 +86,39 @@ export class OrganizerEventsService {
     });
 
     if (!profile || profile.kycStatus !== 'VERIFIED') {
-      throw new ForbiddenException('Your account must be verified by an admin before you can create events.');
+      throw new ForbiddenException(
+        'Your account must be verified by an admin before you can create events.',
+      );
     }
 
     const activeSub = profile.subscriptions[0];
     if (!activeSub) {
-      throw new ForbiddenException('You need an active subscription to create events.');
+      throw new ForbiddenException(
+        'You need an active subscription to create events.',
+      );
     }
 
     if (profile.paymentMethods.length === 0) {
-      throw new ForbiddenException('You need at least one approved payment method to sell tickets.');
+      throw new ForbiddenException(
+        'You need at least one approved payment method to sell tickets.',
+      );
     }
 
-    const ticketCapacity = dto.ticketTiers.reduce(
-      (total, tier) => total + tier.quantityTotal,
-      0,
+    const ticketSeatCapacity = dto.ticketTiers.reduce((total, tier: any) => {
+      const groupInfo = this.normalizeTierGroupFields(tier);
+      return total + tier.quantityTotal * groupInfo.occupantsPerUnit;
+    }, 0);
+
+    const requestedTotalTickets =
+      (dto as any).totalTicketsAvailable ??
+      dto.maxAttendees ??
+      ticketSeatCapacity;
+    const eventCapacity = Math.max(
+      dto.maxAttendees ?? requestedTotalTickets,
+      requestedTotalTickets,
+      ticketSeatCapacity,
     );
-    const eventCapacity = Math.max(dto.maxAttendees ?? ticketCapacity, ticketCapacity);
+
     if (
       activeSub.plan.maxAttendeesEvent !== null &&
       eventCapacity > activeSub.plan.maxAttendeesEvent
@@ -134,23 +171,29 @@ export class OrganizerEventsService {
         longitude: dto.longitude ?? null,
         startsAt: new Date(dto.startsAt),
         endsAt: new Date(dto.endsAt),
-        maxAttendees: dto.maxAttendees ?? ticketCapacity,
+        maxAttendees: dto.maxAttendees ?? requestedTotalTickets,
+        totalTicketsAvailable: requestedTotalTickets,
+        allowGroupBookings: Boolean((dto as any).allowGroupBookings),
         isFeatured: dto.isFeatured ?? false,
         eventFeatures: dto.eventFeatures ?? [],
         status: 'DRAFT',
         ticketTiers: {
-          create: dto.ticketTiers.map((tier, i) => ({
-            name: tier.name,
-            description: tier.description ?? null,
-            priceKes: tier.priceKes,
-            quantityTotal: tier.quantityTotal,
-            salesStartAt: tier.salesStartAt
-              ? new Date(tier.salesStartAt)
-              : null,
-            salesEndAt: tier.salesEndAt ? new Date(tier.salesEndAt) : null,
-            sortOrder: tier.sortOrder ?? i,
-            isActive: tier.isActive ?? true,
-          })),
+          create: dto.ticketTiers.map((tier: any, i) => {
+            const groupInfo = this.normalizeTierGroupFields(tier);
+            return {
+              name: tier.name,
+              description: tier.description ?? null,
+              priceKes: tier.priceKes,
+              quantityTotal: tier.quantityTotal,
+              ...groupInfo,
+              salesStartAt: tier.salesStartAt
+                ? new Date(tier.salesStartAt)
+                : null,
+              salesEndAt: tier.salesEndAt ? new Date(tier.salesEndAt) : null,
+              sortOrder: tier.sortOrder ?? i,
+              isActive: tier.isActive ?? true,
+            };
+          }),
         },
       },
       include: {
@@ -244,11 +287,15 @@ export class OrganizerEventsService {
     if (dto.startsAt !== undefined) data.startsAt = new Date(dto.startsAt);
     if (dto.endsAt !== undefined) data.endsAt = new Date(dto.endsAt);
     if (dto.maxAttendees !== undefined) data.maxAttendees = dto.maxAttendees;
+    if ((dto as any).totalTicketsAvailable !== undefined) {
+      data.totalTicketsAvailable = (dto as any).totalTicketsAvailable;
+    }
+    if ((dto as any).allowGroupBookings !== undefined) {
+      data.allowGroupBookings = Boolean((dto as any).allowGroupBookings);
+    }
     if (dto.isFeatured !== undefined) data.isFeatured = dto.isFeatured;
     if (dto.eventFeatures !== undefined) data.eventFeatures = dto.eventFeatures;
 
-    // Capture into a local const so TypeScript keeps the narrowing
-    // inside the $transaction callback.
     const incomingTiers = dto.ticketTiers;
 
     if (incomingTiers) {
@@ -290,18 +337,18 @@ export class OrganizerEventsService {
         }
 
         for (let i = 0; i < incomingTiers.length; i++) {
-          const tier = incomingTiers[i];
+          const tier: any = incomingTiers[i];
+          const groupInfo = this.normalizeTierGroupFields(tier);
           const tierData = {
             name: tier.name,
             description: tier.description ?? null,
             priceKes: tier.priceKes,
             quantityTotal: tier.quantityTotal,
+            ...groupInfo,
             salesStartAt: tier.salesStartAt
               ? new Date(tier.salesStartAt)
               : null,
-            salesEndAt: tier.salesEndAt
-              ? new Date(tier.salesEndAt)
-              : null,
+            salesEndAt: tier.salesEndAt ? new Date(tier.salesEndAt) : null,
             sortOrder: tier.sortOrder ?? i,
             isActive: tier.isActive ?? true,
           };
@@ -365,7 +412,7 @@ export class OrganizerEventsService {
       'Event Submitted',
       `"${event.title}" has been submitted for approval.`,
       'EVENT_SUBMITTED',
-      { eventId }
+      { eventId },
     );
 
     return updated;
@@ -410,8 +457,7 @@ export class OrganizerEventsService {
         },
         data: {
           status: 'CANCELLED',
-          cancellationReason:
-            dto.reason ?? 'Event cancelled by organizer',
+          cancellationReason: dto.reason ?? 'Event cancelled by organizer',
           cancelledAt: new Date(),
         },
       });
@@ -445,6 +491,8 @@ export class OrganizerEventsService {
         startsAt: original.startsAt,
         endsAt: original.endsAt,
         maxAttendees: original.maxAttendees,
+        totalTicketsAvailable: original.totalTicketsAvailable,
+        allowGroupBookings: original.allowGroupBookings,
         status: 'DRAFT',
         ticketTiers: {
           create: original.ticketTiers.map((tier, i) => ({
@@ -452,6 +500,10 @@ export class OrganizerEventsService {
             description: tier.description ?? null,
             priceKes: tier.priceKes,
             quantityTotal: tier.quantityTotal,
+            isGroupSubgroup: tier.isGroupSubgroup,
+            groupCategory: tier.groupCategory,
+            occupantsPerUnit: tier.occupantsPerUnit,
+            pricingMode: tier.pricingMode,
             salesStartAt: tier.salesStartAt,
             salesEndAt: tier.salesEndAt,
             sortOrder: tier.sortOrder ?? i,
@@ -471,6 +523,65 @@ export class OrganizerEventsService {
     return copy;
   }
 
+  async listEventBookings(userId: string, eventId: string) {
+    await this.findOwn(userId, eventId);
+
+    const bookings = await this.prisma.booking.findMany({
+      where: { eventId },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: {
+        attendee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            phone: true,
+          },
+        },
+        ticketTier: {
+          select: {
+            id: true,
+            name: true,
+            priceKes: true,
+            isGroupSubgroup: true,
+            groupCategory: true,
+            occupantsPerUnit: true,
+            pricingMode: true,
+          },
+        },
+        eTickets: {
+          orderBy: { ticketIndex: 'asc' },
+          select: {
+            id: true,
+            ticketIndex: true,
+            ticketCode: true,
+            guestName: true,
+            guestPhone: true,
+            status: true,
+            scannedAt: true,
+          },
+        },
+        payments: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            amountKes: true,
+            mpesaReceipt: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    return {
+      total: bookings.length,
+      items: bookings,
+    };
+  }
+
   async listAttendees(userId: string, eventId: string) {
     await this.findOwn(userId, eventId);
 
@@ -487,8 +598,28 @@ export class OrganizerEventsService {
             phone: true,
           },
         },
-        ticketTier: { select: { name: true, priceKes: true } },
-        eTicket: { select: { ticketCode: true, status: true } },
+        ticketTier: {
+          select: {
+            name: true,
+            priceKes: true,
+            isGroupSubgroup: true,
+            groupCategory: true,
+            occupantsPerUnit: true,
+            pricingMode: true,
+          },
+        },
+        eTickets: {
+          orderBy: { ticketIndex: 'asc' },
+          select: {
+            id: true,
+            ticketIndex: true,
+            ticketCode: true,
+            guestName: true,
+            guestPhone: true,
+            status: true,
+            scannedAt: true,
+          },
+        },
       },
     });
 
@@ -499,12 +630,13 @@ export class OrganizerEventsService {
         reference: b.bookingReference,
         status: b.status,
         quantity: b.quantity,
+        occupantsCount: b.occupantsCount ?? b.quantity,
         totalAmountKes: b.totalAmountKes,
         createdAt: b.createdAt,
         confirmedAt: b.confirmedAt,
         attendee: b.attendee,
         tier: b.ticketTier,
-        ticket: b.eTicket ?? null,
+        tickets: b.eTickets,
       })),
     };
   }

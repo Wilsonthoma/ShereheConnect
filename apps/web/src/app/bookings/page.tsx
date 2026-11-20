@@ -7,23 +7,20 @@ import {
   type BookingRecord,
   type BookingStatus,
 } from '@/lib/bookingsApi';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 
-function formatKes(amount: number): string {
-  if (amount === 0) return 'FREE';
-  return `KES ${amount.toLocaleString('en-KE')}`;
+function getBookingTickets(booking: BookingRecord) {
+  if (Array.isArray(booking.eTickets) && booking.eTickets.length > 0) {
+    return booking.eTickets;
+  }
+  return booking.eTicket ? [booking.eTicket] : [];
 }
 
-function formatDateTime(iso?: string | null): string {
-  if (!iso) return 'TBA';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('en-KE', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
-
-function useCountdown(expiresAt: string, active: boolean): string {
+function useCountdown(
+  expiresAt: string,
+  active: boolean,
+  expiredSuffix: string,
+): string {
   const [remaining, setRemaining] = useState<string>('');
 
   useEffect(() => {
@@ -35,7 +32,7 @@ function useCountdown(expiresAt: string, active: boolean): string {
     function update() {
       const diffMs = new Date(expiresAt).getTime() - Date.now();
       if (diffMs <= 0) {
-        setRemaining('00:00 (Expired)');
+        setRemaining(`00:00${expiredSuffix}`);
         return;
       }
       const totalSeconds = Math.floor(diffMs / 1000);
@@ -49,7 +46,7 @@ function useCountdown(expiresAt: string, active: boolean): string {
     update();
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
-  }, [expiresAt, active]);
+  }, [expiresAt, active, expiredSuffix]);
 
   return remaining;
 }
@@ -63,55 +60,136 @@ function BookingCard({
   onCancel: (id: string) => void;
   cancellingId: string | null;
 }) {
+  const { t, language } = useLanguage();
+  const localeTag = language === 'sw' ? 'sw-KE' : 'en-KE';
+
+  const formatKes = (amount: number): string => {
+    if (amount === 0) return t('common.free');
+    return `KES ${amount.toLocaleString(localeTag)}`;
+  };
+
+  const formatDateTime = (iso?: string | null): string => {
+    if (!iso) return t('common.tba');
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return iso;
+    return date.toLocaleString(localeTag, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  };
+
+  const formatGroupCategoryLabel = (category?: string | null): string => {
+    switch (category) {
+      case 'FAMILY':
+        return t('common.group.family');
+      case 'COUPLE':
+        return t('common.group.couple');
+      case 'FRIENDS':
+        return t('common.group.friends');
+      case 'TABLE':
+        return t('common.group.table');
+      default:
+        return category ? category : t('common.group.bundle');
+    }
+  };
+
   const isPending = booking.status === 'PENDING';
-  const countdown = useCountdown(booking.expiresAt, isPending);
+  const countdown = useCountdown(
+    booking.expiresAt,
+    isPending,
+    t('bookings.card.expiredSuffix'),
+  );
   const canCancel =
     booking.status === 'PENDING' || booking.status === 'PAYMENT_RECEIVED';
+  const tickets = getBookingTickets(booking);
+  const isGroup = Boolean(booking.ticketTier.isGroupSubgroup);
+  const occupants =
+    typeof booking.occupantsCount === 'number' && booking.occupantsCount > 0
+      ? booking.occupantsCount
+      : isGroup && (booking.ticketTier.occupantsPerUnit ?? 1) > 1
+        ? (booking.ticketTier.occupantsPerUnit ?? 1) * booking.quantity
+        : booking.quantity;
+
+  const pricingModeLabel =
+    booking.ticketTier.pricingMode === 'BUNDLE_FIXED'
+      ? t('common.pricing.fixedBundle')
+      : t('common.pricing.perOccupant');
 
   return (
-    <article className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] p-5 space-y-4">
+    <article className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] p-5 space-y-4 transition-colors">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
-            {booking.bookingReference}
-          </p>
-          <h2 className="text-lg text-slate-900 dark:text-white">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+              {booking.bookingReference}
+            </p>
+            {isGroup && (
+              <span className="inline-flex items-center rounded-full bg-[#E0F2FE] dark:bg-[#29ABE2]/20 px-2.5 py-0.5 text-[11px] font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
+                {formatGroupCategoryLabel(booking.ticketTier.groupCategory)}
+              </span>
+            )}
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
             <Link
               href={`/events/${booking.event.slug}`}
-              className="hover:text-[#29ABE2] transition-colors"
+              className="hover:text-[#1A8CC4] dark:hover:text-[#29ABE2] transition-colors"
             >
               {booking.event.title}
             </Link>
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-slate-500 dark:text-slate-300">
             {booking.event.venueName}, {booking.event.county} /{' '}
             {formatDateTime(booking.event.startsAt)}
           </p>
         </div>
 
-        <span className="rounded-full border border-[#29ABE2]/40 bg-[#E0F2FE]/60 dark:bg-[#29ABE2]/15 px-3 py-1 text-xs font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
+        <span className="rounded-full border border-[#29ABE2]/40 bg-[#E0F2FE]/70 dark:bg-[#29ABE2]/15 px-3 py-1 text-xs font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
           {booking.status}
         </span>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm border-t border-slate-200 dark:border-slate-700 pt-3">
         <div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Tickets</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t('bookings.card.ticketsAndOccupants')}
+          </p>
           <p className="font-semibold text-slate-900 dark:text-white">
             {booking.quantity}x {booking.ticketTier.name}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-300">
+            {t('bookings.card.occupantsSummary', {
+              count: occupants,
+              label:
+                occupants === 1
+                  ? t('common.occupant.singular')
+                  : t('common.occupant.plural'),
+              modePart:
+                isGroup && booking.ticketTier.pricingMode
+                  ? t('bookings.card.modeSuffix', { mode: pricingModeLabel })
+                  : '',
+            })}
           </p>
         </div>
         <div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Total Amount
+            {t('bookings.card.totalAmount')}
           </p>
           <p className="font-semibold text-slate-900 dark:text-white">
             {formatKes(booking.totalAmountKes)}
           </p>
+          {booking.unitPriceKes > 0 && (
+            <p className="text-xs text-slate-500 dark:text-slate-300">
+              {t('bookings.card.unitRate', {
+                amount: formatKes(booking.unitPriceKes),
+              })}
+            </p>
+          )}
         </div>
         <div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {isPending ? 'Hold Remaining' : 'Created'}
+            {isPending
+              ? t('bookings.card.holdRemaining')
+              : t('bookings.card.created')}
           </p>
           <p className="font-semibold font-mono text-slate-900 dark:text-white">
             {isPending
@@ -124,30 +202,50 @@ function BookingCard({
       {isPending && booking.totalAmountKes > 0 && (
         <div className="rounded-xl bg-slate-50 dark:bg-[#2B2B2B] border border-slate-200 dark:border-slate-700 p-3.5 text-xs space-y-1">
           <p className="font-semibold text-slate-900 dark:text-white">
-            Direct Organizer Payment Instructions
+            {t('bookings.card.payHeading')}
           </p>
           <p className="text-slate-600 dark:text-slate-300">
-            Pay{' '}
-            <span className="font-semibold text-slate-900 dark:text-white">
-              {formatKes(booking.totalAmountKes)}
-            </span>{' '}
-            directly to the organizer using booking reference{' '}
-            <span className="font-mono font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
-              {booking.bookingReference}
-            </span>{' '}
-            before the reservation hold expires.
+            {t('bookings.card.payBody', {
+              amount: formatKes(booking.totalAmountKes),
+              ref: booking.bookingReference,
+            })}
           </p>
+        </div>
+      )}
+
+      {tickets.length > 0 && (
+        <div className="rounded-xl bg-slate-50 dark:bg-[#2B2B2B] border border-slate-200 dark:border-slate-700 p-3 text-xs space-y-1.5">
+          <p className="font-semibold text-slate-900 dark:text-white">
+            {t('bookings.card.issuedHeading', { count: tickets.length })}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {tickets.map((ticket, idx) => (
+              <span
+                key={ticket.id || ticket.ticketCode || idx}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white dark:bg-[#3A3A3A] border border-slate-200 dark:border-slate-600 px-2.5 py-1 font-mono text-[11px] text-slate-800 dark:text-slate-100"
+              >
+                <span>{ticket.ticketCode}</span>
+                <span className="text-[10px] font-sans font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
+                  {ticket.status}
+                </span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <div className="flex items-center gap-4 text-sm">
-          {booking.eTicket && (
+          {tickets.length > 0 && (
             <Link
-              href="/tickets"
+              href={`/tickets?bookingId=${encodeURIComponent(booking.id)}`}
               className="font-semibold text-[#1A8CC4] dark:text-[#29ABE2] underline"
             >
-              View E-Ticket ({booking.eTicket.ticketCode})
+              {tickets.length > 1
+                ? t('bookings.card.viewAllTickets', { count: tickets.length })
+                : t('bookings.card.viewSingleTicket', {
+                    code: tickets[0].ticketCode,
+                  })}
             </Link>
           )}
         </div>
@@ -159,7 +257,9 @@ function BookingCard({
             onClick={() => onCancel(booking.id)}
             className="rounded-full border border-red-500/50 px-4 py-1.5 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
           >
-            {cancellingId === booking.id ? 'Cancelling...' : 'Cancel Booking'}
+            {cancellingId === booking.id
+              ? t('bookings.card.cancelling')
+              : t('bookings.card.cancelButton')}
           </button>
         )}
       </div>
@@ -168,6 +268,7 @@ function BookingCard({
 }
 
 export default function BookingsPage() {
+  const { t } = useLanguage();
   const [bookings, setBookings] = useState<BookingRecord[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -183,13 +284,11 @@ export default function BookingsPage() {
       );
       setBookings(items);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to load bookings',
-      );
+      setError(err instanceof Error ? err.message : t('bookings.error.load'));
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, t]);
 
   useEffect(() => {
     loadBookings();
@@ -200,86 +299,88 @@ export default function BookingsPage() {
     setError(null);
     try {
       await bookingsApi.cancelBooking(id, {
-        reason: 'Cancelled from bookings dashboard',
+        reason: t('bookings.card.cancelReason'),
       });
       await loadBookings();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Unable to cancel booking',
-      );
+      setError(err instanceof Error ? err.message : t('bookings.error.cancel'));
     } finally {
       setCancellingId(null);
     }
   }
 
   return (
-    <main className="container-fluid py-8 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl sm:text-4xl text-slate-900 dark:text-white">
-            My Bookings
-          </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            Track active 15-minute ticket holds, payment references, and
-            confirmed reservations.
-          </p>
+    <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] transition-colors">
+      <div className="container-fluid py-8 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1
+              style={{ fontFamily: "'Kaushan Script', cursive" }}
+              className="text-3xl sm:text-4xl text-slate-900 dark:text-white"
+            >
+              {t('bookings.title')}
+            </h1>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
+              {t('bookings.subtitle')}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="booking-status-filter"
+              className="text-xs font-semibold text-slate-600 dark:text-slate-300"
+            >
+              {t('bookings.filterLabel')}
+            </label>
+            <select
+              id="booking-status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-xl border-[1.5px] border-slate-300 dark:border-slate-600 bg-white dark:bg-[#3A3A3A] px-3 py-2 text-sm font-medium text-slate-900 dark:text-white outline-none focus:border-[#29ABE2]"
+            >
+              <option value="">{t('bookings.filter.all')}</option>
+              <option value="PENDING">PENDING</option>
+              <option value="PAYMENT_RECEIVED">PAYMENT_RECEIVED</option>
+              <option value="CONFIRMED">CONFIRMED</option>
+              <option value="EXPIRED">EXPIRED</option>
+              <option value="CANCELLED">CANCELLED</option>
+              <option value="CHECKED_IN">CHECKED_IN</option>
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor="booking-status-filter"
-            className="text-xs font-semibold text-slate-600 dark:text-slate-300"
-          >
-            Status
-          </label>
-          <select
-            id="booking-status-filter"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-xl border-[1.5px] border-slate-300 dark:border-slate-600 bg-white dark:bg-[#3A3A3A] px-3 py-2 text-sm font-medium text-slate-900 dark:text-white outline-none focus:border-[#29ABE2]"
-          >
-            <option value="">All</option>
-            <option value="PENDING">PENDING</option>
-            <option value="PAYMENT_RECEIVED">PAYMENT_RECEIVED</option>
-            <option value="CONFIRMED">CONFIRMED</option>
-            <option value="EXPIRED">EXPIRED</option>
-            <option value="CANCELLED">CANCELLED</option>
-            <option value="CHECKED_IN">CHECKED_IN</option>
-          </select>
-        </div>
+        {error && (
+          <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {t('bookings.loading')}
+          </p>
+        ) : bookings.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] p-8 text-center space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              {t('bookings.empty')}
+            </p>
+            <Link href="/events" className="btn-coddy inline-block text-sm">
+              {t('bookings.browseEvents')}
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {bookings.map((booking) => (
+              <BookingCard
+                key={booking.id}
+                booking={booking}
+                onCancel={handleCancel}
+                cancellingId={cancellingId}
+              />
+            ))}
+          </div>
+        )}
       </div>
-
-      {error && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Loading your bookings...
-        </p>
-      ) : bookings.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] p-8 text-center space-y-4">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            No bookings found.
-          </p>
-          <Link href="/events" className="btn-coddy inline-block text-sm">
-            Browse Events
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {bookings.map((booking) => (
-            <BookingCard
-              key={booking.id}
-              booking={booking}
-              onCancel={handleCancel}
-              cancellingId={cancellingId}
-            />
-          ))}
-        </div>
-      )}
     </main>
   );
 }

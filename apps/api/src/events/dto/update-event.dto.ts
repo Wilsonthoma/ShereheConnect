@@ -1,30 +1,48 @@
 import {
-  IsString, IsOptional, IsISO8601, IsInt, IsArray,
-  ValidateNested, MaxLength, Min, IsBoolean
+  IsString,
+  IsOptional,
+  IsISO8601,
+  IsInt,
+  IsArray,
+  ValidateNested,
+  MaxLength,
+  Min,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TicketTierDto } from './ticket-tier.dto';
 
 export class UpdateEventDto {
-  @IsOptional() @IsString() @MaxLength(300)
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   title?: string;
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   description?: string;
 
-  @IsOptional() @IsString() @MaxLength(50)
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
   categoryId?: string;
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   coverImageUrl?: string;
 
-  @IsOptional() @IsString() @MaxLength(200)
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
   venueName?: string;
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   address?: string;
 
-  @IsOptional() @IsString() @MaxLength(100)
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
   county?: string;
 
   @IsOptional()
@@ -33,21 +51,40 @@ export class UpdateEventDto {
   @IsOptional()
   longitude?: number;
 
-  @IsOptional() @IsISO8601()
+  @IsOptional()
+  @IsISO8601()
   startsAt?: string;
 
-  @IsOptional() @IsISO8601()
+  @IsOptional()
+  @IsISO8601()
   endsAt?: string;
 
-  @IsOptional() @IsInt() @Min(1)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
   maxAttendees?: number;
 
-  @IsOptional() @IsBoolean()
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  totalTicketsAvailable?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  allowGroupBookings?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   isFeatured?: boolean;
 
-  @IsOptional() @IsArray() @IsString({ each: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   eventFeatures?: string[];
 
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => TicketTierDto)
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TicketTierDto)
   ticketTiers?: TicketTierDto[];
 }

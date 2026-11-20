@@ -73,6 +73,11 @@ export class OrganizerEventsController {
     return this.organizerEvents.duplicate(user.id, id);
   }
 
+  @Get(':id/bookings')
+  async bookings(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.organizerEvents.listEventBookings(user.id, id);
+  }
+
   @Get(':id/attendees')
   async attendees(@CurrentUser() user: any, @Param('id') id: string) {
     return this.organizerEvents.listAttendees(user.id, id);
