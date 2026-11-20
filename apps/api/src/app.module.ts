@@ -13,6 +13,7 @@ import { AdminOrganizersModule } from './admin/organizers/admin-organizers.modul
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrganizerModule } from './organizer/organizer.module';
 import { PaymentsModule } from './payments/payments.module';
+import { BookingsModule } from './bookings/bookings.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { PaymentsModule } from './payments/payments.module';
     NotificationsModule,
     OrganizerModule,
     PaymentsModule,
+    BookingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

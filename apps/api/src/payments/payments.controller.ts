@@ -10,6 +10,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SubscriptionsPaymentService } from './subscriptions-payment.service';
+import {
+  C2bTicketPaymentService,
+  type C2bCallbackPayload,
+} from './c2b-ticket-payment.service';
 import { InitiateSubscriptionDto } from './dto/initiate-subscription.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -20,6 +24,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class PaymentsController {
   constructor(
     private readonly subscriptionPayments: SubscriptionsPaymentService,
+    private readonly c2bTicketPayments: C2bTicketPaymentService,
   ) {}
 
   @Post('subscriptions/stk-push')
@@ -59,5 +64,14 @@ export class PaymentsController {
     @Query('token') token?: string,
   ) {
     return this.subscriptionPayments.handleStkCallback(payload, token);
+  }
+
+  @Post('mpesa/c2b/confirmation')
+  @HttpCode(HttpStatus.OK)
+  handleC2bConfirmation(
+    @Body() payload: C2bCallbackPayload,
+    @Query('token') token?: string,
+  ) {
+    return this.c2bTicketPayments.handleC2bConfirmation(payload, token);
   }
 }
