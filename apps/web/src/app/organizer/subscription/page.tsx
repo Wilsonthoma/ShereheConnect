@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Gem } from 'lucide-react';
+import { AlertCircle, Check, Gem } from 'lucide-react';
 import {
   organizerApi,
   SubscriptionOverview,
@@ -62,7 +62,7 @@ export default function SubscriptionPage() {
         </p>
       </div>
 
-      {activePlan && (
+      {activePlan ? (
         <section className="flex flex-wrap items-center justify-between gap-5 border-y border-slate-200 py-5 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -77,6 +77,20 @@ export default function SubscriptionPage() {
             {overview.eventsThisMonth} of {formatLimit(activePlan.maxEventsPerMonth)} events used this month
           </p>
         </section>
+      ) : (
+        <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                No active subscription yet
+              </p>
+              <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                Choose a plan below (starting at KES 50) and complete the M-Pesa STK Push prompt to activate your subscription.
+              </p>
+            </div>
+          </div>
+        </section>
       )}
 
       <div className="grid gap-5 md:grid-cols-3">
@@ -84,14 +98,15 @@ export default function SubscriptionPage() {
           <PlanOption
             key={plan.id}
             plan={plan}
+            hasActiveSubscription={Boolean(activePlan)}
             isCurrent={plan.id === activePlan?.id}
-            onSelectUpgrade={(chosenPlan) => setSelectedPlan(chosenPlan)}
+            onSelectPlan={(chosenPlan) => setSelectedPlan(chosenPlan)}
           />
         ))}
       </div>
 
       <p className="border-l-2 border-emerald-600 pl-4 text-sm text-slate-600 dark:text-slate-300">
-        Select a paid plan to receive an M-Pesa STK Push prompt. Your plan activates once Daraja confirms payment.
+        Select a plan to receive an M-Pesa STK Push prompt. Your subscription activates only after Daraja confirms payment.
       </p>
 
       <MpesaStkPushModal
@@ -106,15 +121,17 @@ export default function SubscriptionPage() {
 
 function PlanOption({
   plan,
+  hasActiveSubscription,
   isCurrent,
-  onSelectUpgrade,
+  onSelectPlan,
 }: {
   plan: SubscriptionPlan;
+  hasActiveSubscription: boolean;
   isCurrent: boolean;
-  onSelectUpgrade: (plan: SubscriptionPlan) => void;
+  onSelectPlan: (plan: SubscriptionPlan) => void;
 }) {
   const isPaidPlan = plan.priceKes > 0 && plan.code.toUpperCase() !== 'FREE';
-  const canUpgrade = !isCurrent && isPaidPlan;
+  const canSelect = !isCurrent && isPaidPlan;
 
   return (
     <article className="flex flex-col border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -137,10 +154,10 @@ function PlanOption({
       </ul>
       <button
         type="button"
-        disabled={!canUpgrade}
-        onClick={() => canUpgrade && onSelectUpgrade(plan)}
+        disabled={!canSelect}
+        onClick={() => canSelect && onSelectPlan(plan)}
         className={`w-full rounded-lg px-3 py-2 text-sm font-semibold transition ${
-          canUpgrade
+          canSelect
             ? 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer'
             : 'border border-slate-200 text-slate-500 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700'
         }`}
@@ -148,7 +165,9 @@ function PlanOption({
         {isCurrent
           ? 'Current plan'
           : isPaidPlan
-            ? `Upgrade to ${plan.code}`
+            ? hasActiveSubscription
+              ? `Switch to ${plan.code}`
+              : `Subscribe to ${plan.code}`
             : 'Free tier'}
       </button>
     </article>

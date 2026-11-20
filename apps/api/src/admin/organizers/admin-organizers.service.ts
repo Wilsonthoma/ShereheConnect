@@ -84,51 +84,36 @@ export class AdminOrganizersService {
     });
     if (!profile) throw new NotFoundException('Organizer not found');
 
+    const isSuspended = (dto.kycStatus as string) === 'SUSPENDED';
+
     const updated = await this.prisma.organizerProfile.update({
       where: { id },
       data: {
         kycStatus: dto.kycStatus,
-        kycNotes: String(dto.kycStatus) === 'SUSPENDED' ? null : (dto.notes ?? null),
-        suspensionReason: String(dto.kycStatus) === 'SUSPENDED' ? dto.notes : null,
+        kycNotes: isSuspended ? null : (dto.notes ?? null),
+        suspensionReason: isSuspended ? (dto.notes ?? null) : null,
         kycReviewedBy: adminId,
         kycReviewedAt: new Date(),
       },
     });
 
-    // Auto-enroll in STARTER plan if approved for the first time
-    if (dto.kycStatus === KycStatus.VERIFIED) {
-      const existingSub = await this.prisma.subscription.findFirst({
-        where: { organizerId: id, status: 'ACTIVE' },
-      });
+    const title =
+      dto.kycStatus === KycStatus.VERIFIED
+        ? 'KYC Approved'
+        : dto.kycStatus === KycStatus.REJECTED
+          ? 'KYC Rejected'
+          : isSuspended
+            ? 'Account Suspended'
+            : 'Action Required';
 
-      if (!existingSub) {
-        const starterPlan = await this.prisma.subscriptionPlan.findUnique({
-          where: { code: 'STARTER' },
-        });
-        if (starterPlan) {
-          await this.prisma.subscription.create({
-            data: {
-              organizerId: id,
-              planId: starterPlan.id,
-              status: 'ACTIVE',
-              currentPeriodStart: new Date(),
-              // 100 years from now for the free plan
-              currentPeriodEnd: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000),
-            },
-          });
-        }
-      }
-    }
-
-    // Notify the organizer
-    const title = dto.kycStatus === 'VERIFIED' ? 'KYC Approved' : 
-                  dto.kycStatus === 'REJECTED' ? 'KYC Rejected' :
-                  String(dto.kycStatus) === 'SUSPENDED' ? 'Account Suspended' : 'Action Required';
-    
-    let message = dto.kycStatus === 'VERIFIED' ? 'Your account has been verified. You can now create events.' :
-                  dto.kycStatus === 'REJECTED' ? 'Your KYC application was rejected. Please check the feedback.' :
-                  String(dto.kycStatus) === 'SUSPENDED' ? 'Your account has been suspended. Please contact support.' :
-                  'Admin has requested changes to your KYC documents.';
+    let message =
+      dto.kycStatus === KycStatus.VERIFIED
+        ? 'Your KYC has been approved. Please choose a subscription plan and complete payment to start creating events.'
+        : dto.kycStatus === KycStatus.REJECTED
+          ? 'Your KYC application was rejected. Please check the feedback.'
+          : isSuspended
+            ? 'Your account has been suspended. Please contact support.'
+            : 'Admin has requested changes to your KYC documents.';
 
     if (dto.notes) message += ` Reason: ${dto.notes}`;
 
@@ -137,7 +122,7 @@ export class AdminOrganizersService {
       title,
       message,
       type: `KYC_${dto.kycStatus}`,
-      metadata: { organizerId: id }
+      metadata: { organizerId: id },
     });
 
     return updated;
@@ -157,7 +142,8 @@ export class AdminOrganizersService {
     await this.notifications.create({
       userId: method.organizer.userId,
       title: 'Payment Method Approved',
-      message: 'Your payment method has been approved and can now receive ticket payments.',
+      message:
+        'Your payment method has been approved and can now receive ticket payments.',
       type: 'PAYMENT_METHOD_APPROVED',
       metadata: { paymentMethodId: id },
     });
@@ -215,6 +201,7 @@ export class AdminOrganizersService {
         data: { suspensionReason: reason },
       }),
     ]);
+
     await this.notifications.create({
       userId: profile.userId,
       title: 'Account Suspended',
