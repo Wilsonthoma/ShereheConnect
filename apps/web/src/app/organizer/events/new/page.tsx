@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -23,15 +23,32 @@ import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { Button, FullPageLoader } from '@/components/ui';
 import { KENYA_COUNTIES, lookupCounty } from '@/lib/kenya-counties';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
+import {
+  resolveLabel,
+  type GeoCoords,
+  type TranslateFn,
+} from '@/lib/eventDetailHelpers';
 
 const ImageUploader = dynamic(
   () =>
     import('@/components/ui/ImageUploader').then((module) => module.ImageUploader),
   {
+    ssr: false,
     loading: () => (
       <div className="flex h-32 w-full max-w-md items-center justify-center rounded-xl border-2 border-dashed border-slate-300 text-sm text-slate-500 dark:border-slate-600">
         Loading image upload...
       </div>
+    ),
+  },
+);
+
+const OrganizerLocationPicker = dynamic(
+  () => import('@/components/events/OrganizerLocationPicker'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-72 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 animate-pulse" />
     ),
   },
 );
@@ -371,14 +388,22 @@ const TicketTiersConfigurator = dynamic(
 
 export default function CreateEventPage() {
   const router = useRouter();
+  const { t, language } = useLanguage();
+  const isSw = language === 'sw';
+
+  const tr = useCallback<TranslateFn>(
+    (key, interpParams) => resolveLabel(t, isSw, key, interpParams),
+    [t, isSw],
+  );
+
   const [saving, setSaving] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState('');
   const [step, setStep] = useState(1);
 
-  // Gate state
   const [gateLoading, setGateLoading] = useState(true);
   const [isAllowed, setIsAllowed] = useState(false);
   const [kycStatus, setKycStatus] = useState<string | null>(null);
+  const [pinnedCoords, setPinnedCoords] = useState<GeoCoords | null>(null);
 
   const [form, setForm] = useState({
     title: '',
@@ -428,6 +453,17 @@ export default function CreateEventPage() {
     setErrors((prev) => ({ ...prev, [field]: '' }));
   };
 
+  const handleLocationChange = useCallback(
+    (coords: GeoCoords, suggestedVenueName?: string) => {
+      setPinnedCoords(coords);
+      setErrors((prev) => ({ ...prev, location: '' }));
+      if (suggestedVenueName && !form.venueName.trim()) {
+        setForm((prev) => ({ ...prev, venueName: suggestedVenueName }));
+      }
+    },
+    [form.venueName],
+  );
+
   const toggleFeature = (id: string) => {
     setForm((prev) => ({
       ...prev,
@@ -449,6 +485,32 @@ export default function CreateEventPage() {
       ),
     }));
     setErrors((prev) => ({ ...prev, ticketTiers: '' }));
+  };
+
+  const addTier = () => {
+    setForm((prev) => ({
+      ...prev,
+      ticketTiers: [
+        ...prev.ticketTiers,
+        {
+          name: '',
+          priceKes: 0,
+          quantityTotal: 50,
+          isGroupSubgroup: false,
+          groupCategory: 'FRIENDS',
+          occupantsPerUnit: 1,
+          pricingMode: 'PER_OCCUPANT',
+        },
+      ],
+    }));
+    setErrors((prev) => ({ ...prev, ticketTiers: '' }));
+  };
+
+  const removeTier = (index: number) => {
+    setForm((prev) => ({
+      ...prev,
+      ticketTiers: prev.ticketTiers.filter((_, i) => i !== index),
+    }));
   };
 
   const handleToggleGroupBookings = (enabled: boolean) => {
@@ -550,7 +612,9 @@ export default function CreateEventPage() {
   };
 
   const handleSave = async () => {
-    const e = validateStep(3);
+    const step2Errors = validateStep(2);
+    const step3Errors = validateStep(3);
+    const e = { ...step2Errors, ...step3Errors };
     setErrors(e);
     if (Object.keys(e).length > 0) {
       toast.error('Invalid form', Object.values(e)[0]);
@@ -560,16 +624,19 @@ export default function CreateEventPage() {
     const token = getToken();
     if (!token) {
       toast.error('Session expired', 'Please log in to create an event.');
-      router.replace(`/login?next=${encodeURIComponent('/organizer/events/new')}`);
+      router.replace(
+        `/login?next=${encodeURIComponent('/organizer/events/new')}`,
+      );
       return;
     }
 
     setSaving(true);
     try {
-      const coords = lookupCounty(form.county) ?? {
+      const fallbackCoords = lookupCounty(form.county) ?? {
         lat: -1.2921,
         lng: 36.8219,
       };
+      const resolvedCoords = pinnedCoords ?? fallbackCoords;
 
       const payload = {
         title: form.title.trim(),
@@ -579,8 +646,8 @@ export default function CreateEventPage() {
         venueName: form.venueName.trim(),
         address: form.address.trim(),
         county: form.county,
-        latitude: coords.lat,
-        longitude: coords.lng,
+        latitude: Number(resolvedCoords.lat.toFixed(6)),
+        longitude: Number(resolvedCoords.lng.toFixed(6)),
         startsAt: new Date(form.startsAt).toISOString(),
         endsAt: new Date(form.endsAt).toISOString(),
         maxAttendees: form.maxAttendees
@@ -745,7 +812,9 @@ export default function CreateEventPage() {
             {s < 3 && (
               <div
                 className={`flex-1 h-0.5 ${
-                  step > s ? 'bg-brand-gradient' : 'bg-slate-200 dark:bg-slate-700'
+                  step > s
+                    ? 'bg-brand-gradient'
+                    : 'bg-slate-200 dark:bg-slate-700'
                 }`}
               />
             )}
@@ -771,7 +840,13 @@ export default function CreateEventPage() {
                 placeholder="e.g., Nairobi Jazz & Food Festival"
                 className={inputCls('title')}
               />
+              {errors.title && (
+                <p className="text-xs font-semibold text-red-500 mt-1">
+                  {errors.title}
+                </p>
+              )}
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 Category *
@@ -791,6 +866,7 @@ export default function CreateEventPage() {
                 ))}
               </select>
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 Cover Image *
@@ -803,7 +879,13 @@ export default function CreateEventPage() {
                 value={form.coverImageUrl}
                 onChange={(url: string) => updateForm('coverImageUrl', url)}
               />
+              {errors.coverImageUrl && (
+                <p className="text-xs font-semibold text-red-500 mt-1">
+                  {errors.coverImageUrl}
+                </p>
+              )}
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 Description *
@@ -819,6 +901,11 @@ export default function CreateEventPage() {
                 placeholder="Write a clear overview of the event..."
                 className={`${inputCls('description')} resize-none`}
               />
+              {errors.description && (
+                <p className="text-xs font-semibold text-red-500 mt-1">
+                  {errors.description}
+                </p>
+              )}
             </div>
           </>
         )}
@@ -839,7 +926,13 @@ export default function CreateEventPage() {
                 placeholder="e.g., Uhuru Gardens or KICC"
                 className={inputCls('venueName')}
               />
+              {errors.venueName && (
+                <p className="text-xs font-semibold text-red-500 mt-1">
+                  {errors.venueName}
+                </p>
+              )}
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 Address *
@@ -855,7 +948,13 @@ export default function CreateEventPage() {
                 placeholder="e.g., Lang'ata Road, Gate B"
                 className={inputCls('address')}
               />
+              {errors.address && (
+                <p className="text-xs font-semibold text-red-500 mt-1">
+                  {errors.address}
+                </p>
+              )}
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 County *
@@ -875,6 +974,14 @@ export default function CreateEventPage() {
                 ))}
               </select>
             </div>
+
+            <OrganizerLocationPicker
+              value={pinnedCoords}
+              venueName={form.venueName}
+              onChange={handleLocationChange}
+              tr={tr}
+            />
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
@@ -889,13 +996,19 @@ export default function CreateEventPage() {
                   onChange={(e) => updateForm('startsAt', e.target.value)}
                   className={inputCls('startsAt')}
                 />
+                {errors.startsAt && (
+                  <p className="text-xs font-semibold text-red-500 mt-1">
+                    {errors.startsAt}
+                  </p>
+                )}
               </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                   Ends At *
                 </label>
                 <p className="text-[11px] text-slate-400 mb-1.5">
-                  Select when the event finishes (must be after start time).
+                  Select when the event wraps up.
                 </p>
                 <input
                   type="datetime-local"
@@ -903,16 +1016,19 @@ export default function CreateEventPage() {
                   onChange={(e) => updateForm('endsAt', e.target.value)}
                   className={inputCls('endsAt')}
                 />
+                {errors.endsAt && (
+                  <p className="text-xs font-semibold text-red-500 mt-1">
+                    {errors.endsAt}
+                  </p>
+                )}
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                   Max Attendees (Optional)
                 </label>
-                <p className="text-[11px] text-slate-400 mb-1.5">
-                  Maximum total guests/occupants allowed across all tiers.
-                </p>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -923,17 +1039,20 @@ export default function CreateEventPage() {
                       e.target.value.replace(/[^0-9]/g, ''),
                     )
                   }
-                  placeholder="e.g., 500"
+                  placeholder="e.g., 200"
                   className={inputCls('maxAttendees')}
                 />
+                {errors.maxAttendees && (
+                  <p className="text-xs font-semibold text-red-500 mt-1">
+                    {errors.maxAttendees}
+                  </p>
+                )}
               </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                   Total Tickets Available (Optional)
                 </label>
-                <p className="text-[11px] text-slate-400 mb-1.5">
-                  Hard cap on total ticket seats released for this event.
-                </p>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -944,9 +1063,14 @@ export default function CreateEventPage() {
                       e.target.value.replace(/[^0-9]/g, ''),
                     )
                   }
-                  placeholder="e.g., 500"
+                  placeholder="e.g., 150"
                   className={inputCls('totalTicketsAvailable')}
                 />
+                {errors.totalTicketsAvailable && (
+                  <p className="text-xs font-semibold text-red-500 mt-1">
+                    {errors.totalTicketsAvailable}
+                  </p>
+                )}
               </div>
             </div>
           </>
@@ -962,40 +1086,21 @@ export default function CreateEventPage() {
             inputCls={inputCls}
             onToggleGroupBookings={handleToggleGroupBookings}
             onAddGroupCategoryTier={addGroupCategoryTier}
-            onToggleFeatured={(checked) => updateForm('isFeatured', checked)}
+            onToggleFeatured={(val) => updateForm('isFeatured', val)}
             onToggleFeature={toggleFeature}
             onUpdateTier={updateTier}
-            onAddTier={() =>
-              updateForm('ticketTiers', [
-                ...form.ticketTiers,
-                {
-                  name: '',
-                  priceKes: 0,
-                  quantityTotal: 50,
-                  isGroupSubgroup: false,
-                  groupCategory: 'FRIENDS',
-                  occupantsPerUnit: 1,
-                  pricingMode: 'PER_OCCUPANT',
-                },
-              ])
-            }
-            onRemoveTier={(index) =>
-              updateForm(
-                'ticketTiers',
-                form.ticketTiers.filter((_, i) => i !== index),
-              )
-            }
+            onAddTier={addTier}
+            onRemoveTier={removeTier}
           />
         )}
 
-        <div className="flex items-center justify-between gap-3 pt-6 border-t border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between gap-4 pt-6 border-t border-slate-100 dark:border-slate-800">
           {step > 1 ? (
             <Button
               type="button"
               variant="outline"
               size="md"
               onClick={() => setStep((s) => s - 1)}
-              className="rounded-xl"
             >
               Previous
             </Button>
@@ -1009,7 +1114,7 @@ export default function CreateEventPage() {
               variant="primary"
               size="md"
               onClick={handleContinue}
-              className="gap-2 bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none rounded-xl"
+              className="gap-2 bg-brand-gradient text-white border-none"
             >
               Continue <ArrowRight className="w-4 h-4" />
             </Button>
@@ -1020,11 +1125,11 @@ export default function CreateEventPage() {
               size="md"
               isLoading={saving}
               disabled={saving}
-              onClick={handleSave}
-              className="gap-2 bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none rounded-xl"
+              onClick={() => void handleSave()}
+              className="gap-2 bg-brand-gradient text-white border-none"
             >
               <Save className="w-4 h-4" />
-              {saving ? 'Creating Event...' : 'Create Event'}
+              {saving ? 'Saving...' : 'Create Event'}
             </Button>
           )}
         </div>

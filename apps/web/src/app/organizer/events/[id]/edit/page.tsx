@@ -1,13 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Trash2, Save } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { ArrowLeft, Plus, Trash2, Save, ArrowRight } from 'lucide-react';
 import { organizerEventsApi, TicketTier } from '@/lib/eventsApi';
 import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
-import { ImageUploader, FullPageLoader } from '@/components/ui';
+import { Button, ImageUploader, FullPageLoader } from '@/components/ui';
 import { KENYA_COUNTIES, lookupCounty } from '@/lib/kenya-counties';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
+import {
+  resolveLabel,
+  type GeoCoords,
+  type TranslateFn,
+} from '@/lib/eventDetailHelpers';
+
+const OrganizerLocationPicker = dynamic(
+  () => import('@/components/events/OrganizerLocationPicker'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-72 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 animate-pulse" />
+    ),
+  },
+);
 
 const CATEGORIES = [
   'FESTIVAL',
@@ -47,6 +64,8 @@ interface EventDetailResponse {
   venueName?: string;
   address?: string;
   county?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   startsAt: string;
   endsAt: string;
   maxAttendees?: number | null;
@@ -82,10 +101,18 @@ export default function EditEventPage() {
   const params = useParams();
   const router = useRouter();
   const id = params?.id as string;
+  const { t, language } = useLanguage();
+  const isSw = language === 'sw';
+
+  const tr = useCallback<TranslateFn>(
+    (key, interpParams) => resolveLabel(t, isSw, key, interpParams),
+    [t, isSw],
+  );
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState(1);
+  const [pinnedCoords, setPinnedCoords] = useState<GeoCoords | null>(null);
 
   const [form, setForm] = useState({
     title: '',
@@ -129,6 +156,24 @@ export default function EditEventPage() {
           token,
           id,
         )) as EventDetailResponse;
+
+        const latNum =
+          event.latitude !== undefined && event.latitude !== null
+            ? Number(event.latitude)
+            : NaN;
+        const lngNum =
+          event.longitude !== undefined && event.longitude !== null
+            ? Number(event.longitude)
+            : NaN;
+        if (
+          !Number.isNaN(latNum) &&
+          !Number.isNaN(lngNum) &&
+          Math.abs(latNum) <= 90 &&
+          Math.abs(lngNum) <= 180
+        ) {
+          setPinnedCoords({ lat: latNum, lng: lngNum });
+        }
+
         setForm({
           title: event.title ?? '',
           description: event.description ?? '',
@@ -184,13 +229,24 @@ export default function EditEventPage() {
         setLoading(false);
       }
     };
-    load();
+    void load();
   }, [id]);
 
   const updateForm = (field: string, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: '' }));
   };
+
+  const handleLocationChange = useCallback(
+    (coords: GeoCoords, suggestedVenueName?: string) => {
+      setPinnedCoords(coords);
+      setErrors((prev) => ({ ...prev, location: '' }));
+      if (suggestedVenueName && !form.venueName.trim()) {
+        setForm((prev) => ({ ...prev, venueName: suggestedVenueName }));
+      }
+    },
+    [form.venueName],
+  );
 
   const toggleFeature = (featId: string) =>
     setForm((prev) => ({
@@ -276,7 +332,9 @@ export default function EditEventPage() {
       }
     }
     if (s === 3) {
-      if (form.ticketTiers.some((t) => !t.name.trim())) e.ticketTiers = 'Required';
+      if (form.ticketTiers.some((t) => !t.name.trim())) {
+        e.ticketTiers = 'Required';
+      }
       if (form.ticketTiers.some((t) => Number(t.quantityTotal) <= 0)) {
         e.ticketTiers = 'Quantity must be greater than 0';
       }
@@ -295,7 +353,9 @@ export default function EditEventPage() {
   };
 
   const handleSave = async () => {
-    const e = validateStep(3);
+    const step2Errors = validateStep(2);
+    const step3Errors = validateStep(3);
+    const e = { ...step2Errors, ...step3Errors };
     setErrors(e);
     if (Object.keys(e).length > 0) {
       toast.error('Invalid form', Object.values(e)[0]);
@@ -306,7 +366,12 @@ export default function EditEventPage() {
 
     setSaving(true);
     try {
-      const coords = lookupCounty(form.county) ?? { lat: -1.2921, lng: 36.8219 };
+      const fallbackCoords = lookupCounty(form.county) ?? {
+        lat: -1.2921,
+        lng: 36.8219,
+      };
+      const resolvedCoords = pinnedCoords ?? fallbackCoords;
+
       const payload: Record<string, unknown> = {
         title: form.title.trim(),
         description: form.description.trim(),
@@ -315,11 +380,13 @@ export default function EditEventPage() {
         venueName: form.venueName.trim(),
         address: form.address.trim(),
         county: form.county,
-        latitude: coords.lat,
-        longitude: coords.lng,
+        latitude: Number(resolvedCoords.lat.toFixed(6)),
+        longitude: Number(resolvedCoords.lng.toFixed(6)),
         startsAt: new Date(form.startsAt).toISOString(),
         endsAt: new Date(form.endsAt).toISOString(),
-        maxAttendees: form.maxAttendees ? parseInt(form.maxAttendees, 10) : undefined,
+        maxAttendees: form.maxAttendees
+          ? parseInt(form.maxAttendees, 10)
+          : undefined,
         totalTicketsAvailable: form.totalTicketsAvailable
           ? parseInt(form.totalTicketsAvailable, 10)
           : undefined,
@@ -331,7 +398,9 @@ export default function EditEventPage() {
           const occupants = isGroup
             ? Math.max(1, Number(t.occupantsPerUnit || 1))
             : 1;
-          const mode = isGroup ? t.pricingMode || 'BUNDLE_FIXED' : 'PER_OCCUPANT';
+          const mode = isGroup
+            ? t.pricingMode || 'BUNDLE_FIXED'
+            : 'PER_OCCUPANT';
 
           return {
             id: t.id,
@@ -372,13 +441,16 @@ export default function EditEventPage() {
 
   return (
     <div className="space-y-6 max-w-4xl pb-20">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => router.push('/organizer/events')}
-        className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-gold"
+        className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-gold px-2 py-1 h-auto"
       >
         <ArrowLeft className="w-4 h-4" /> Back
-      </button>
+      </Button>
+
       <div>
         <h1 className="heading-display text-2xl md:text-3xl text-slate-800 dark:text-slate-100 mb-1">
           Edit Event
@@ -405,12 +477,18 @@ export default function EditEventPage() {
                   : 'text-slate-400'
               }`}
             >
-              {s === 1 ? 'Basic Info' : s === 2 ? 'Venue & Time' : 'Tickets & Extras'}
+              {s === 1
+                ? 'Basic Info'
+                : s === 2
+                  ? 'Venue & Time'
+                  : 'Tickets & Extras'}
             </span>
             {s < 3 && (
               <div
                 className={`flex-1 h-0.5 ${
-                  step > s ? 'bg-brand-gradient' : 'bg-slate-200 dark:bg-slate-700'
+                  step > s
+                    ? 'bg-brand-gradient'
+                    : 'bg-slate-200 dark:bg-slate-700'
                 }`}
               />
             )}
@@ -436,6 +514,7 @@ export default function EditEventPage() {
                 className={inputCls('title')}
               />
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 Category *
@@ -455,6 +534,7 @@ export default function EditEventPage() {
                 ))}
               </select>
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 Cover Image *
@@ -467,6 +547,7 @@ export default function EditEventPage() {
                 onChange={(url: string) => updateForm('coverImageUrl', url)}
               />
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 Description *
@@ -502,6 +583,7 @@ export default function EditEventPage() {
                 className={inputCls('venueName')}
               />
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 Address *
@@ -517,6 +599,7 @@ export default function EditEventPage() {
                 className={inputCls('address')}
               />
             </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                 County *
@@ -536,6 +619,14 @@ export default function EditEventPage() {
                 ))}
               </select>
             </div>
+
+            <OrganizerLocationPicker
+              value={pinnedCoords}
+              venueName={form.venueName}
+              onChange={handleLocationChange}
+              tr={tr}
+            />
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
@@ -551,6 +642,7 @@ export default function EditEventPage() {
                   className={inputCls('startsAt')}
                 />
               </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                   Ends At *
@@ -566,6 +658,7 @@ export default function EditEventPage() {
                 />
               </div>
             </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
@@ -588,6 +681,7 @@ export default function EditEventPage() {
                   className={inputCls('maxAttendees')}
                 />
               </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
                   Total Tickets Available (Optional)
@@ -622,7 +716,8 @@ export default function EditEventPage() {
                     Allow Group Bookings &amp; Subgroups
                   </p>
                   <p className="text-xs text-slate-500">
-                    Enable group subgroups (Couple, Friends, Table, Family) with custom per-subgroup prices.
+                    Enable group subgroups (Couple, Friends, Table, Family) with
+                    custom per-subgroup prices.
                   </p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -632,7 +727,7 @@ export default function EditEventPage() {
                     onChange={(e) => handleToggleGroupBookings(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-slate-200 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold"></div>
+                  <div className="w-11 h-6 bg-slate-200 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold" />
                 </label>
               </div>
 
@@ -643,15 +738,17 @@ export default function EditEventPage() {
                   </span>
                   <div className="flex flex-wrap items-center gap-2">
                     {GROUP_CATEGORIES.map((gc) => (
-                      <button
+                      <Button
                         key={gc}
                         type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() => addGroupCategoryTier(gc)}
-                        className="text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg hover:border-gold transition-colors"
+                        className="text-xs font-semibold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 px-2.5 py-1 h-auto rounded-lg hover:border-gold"
                       >
-                        <Plus className="w-3 h-3 inline mr-1" />
+                        <Plus className="w-3 h-3 mr-1" />
                         {gc}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -673,7 +770,7 @@ export default function EditEventPage() {
                     onChange={(e) => updateForm('isFeatured', e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-slate-200 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold"></div>
+                  <div className="w-11 h-6 bg-slate-200 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold" />
                 </label>
               </div>
 
@@ -712,11 +809,14 @@ export default function EditEventPage() {
                     Individual Tiers &amp; Group Subgroups
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Set each tier or subgroup&apos;s own KES price (0 for free) and available seats/units.
+                    Set each tier or subgroup&apos;s own KES price (0 for free)
+                    and available seats/units.
                   </p>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() =>
                     updateForm('ticketTiers', [
                       ...form.ticketTiers,
@@ -731,10 +831,10 @@ export default function EditEventPage() {
                       },
                     ])
                   }
-                  className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+                  className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 px-3 py-1.5 h-auto rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
                 >
-                  <Plus className="w-3.5 h-3.5 inline mr-1" /> Add Tier
-                </button>
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Tier
+                </Button>
               </div>
 
               {errors.ticketTiers && (
@@ -762,8 +862,10 @@ export default function EditEventPage() {
                           : `Individual Tier ${index + 1}`}
                       </span>
                       {form.ticketTiers.length > 1 && (
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() =>
                             updateForm(
                               'ticketTiers',
@@ -771,10 +873,10 @@ export default function EditEventPage() {
                             )
                           }
                           aria-label={`Remove ticket tier ${index + 1}`}
-                          className="text-red-500"
+                          className="text-red-500 hover:text-red-600 p-1.5 h-auto min-w-0"
                         >
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </Button>
                       )}
                     </div>
 
@@ -786,7 +888,9 @@ export default function EditEventPage() {
                         <input
                           type="text"
                           value={tier.name}
-                          onChange={(e) => updateTier(index, 'name', e.target.value)}
+                          onChange={(e) =>
+                            updateTier(index, 'name', e.target.value)
+                          }
                           placeholder={
                             isGroup
                               ? 'e.g., Couple Package, VIP Table of 6'
@@ -839,92 +943,46 @@ export default function EditEventPage() {
                       </div>
                     </div>
 
-                    {form.allowGroupBookings && (
-                      <div className="pt-3 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 pb-2">
+                    {form.allowGroupBookings && isGroup && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-200/70 dark:border-slate-700/70">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                            Group Category
+                          </label>
+                          <select
+                            value={tier.groupCategory || 'FRIENDS'}
+                            onChange={(e) =>
+                              updateTier(index, 'groupCategory', e.target.value)
+                            }
+                            className={inputCls('groupCategory')}
+                          >
+                            {GROUP_CATEGORIES.map((gc) => (
+                              <option key={gc} value={gc}>
+                                {gc}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                            Occupants Per Package ({occupants})
+                          </label>
                           <input
-                            type="checkbox"
-                            checked={Boolean(tier.isGroupSubgroup)}
+                            type="text"
+                            inputMode="numeric"
+                            value={occupants}
                             onChange={(e) => {
-                              const checked = e.target.checked;
-                              updateTier(index, 'isGroupSubgroup', checked);
-                              if (checked && !tier.pricingMode) {
-                                updateTier(index, 'pricingMode', 'BUNDLE_FIXED');
-                              }
+                              const val = e.target.value.replace(/[^0-9]/g, '');
+                              updateTier(
+                                index,
+                                'occupantsPerUnit',
+                                val ? Math.max(1, Number(val)) : 1,
+                              );
                             }}
-                            className="w-4 h-4 accent-gold rounded"
+                            className={inputCls('occupantsPerUnit')}
                           />
-                          Group Subgroup
-                        </label>
-
-                        {tier.isGroupSubgroup && (
-                          <>
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                                Subgroup Type
-                              </label>
-                              <select
-                                value={tier.groupCategory || 'FRIENDS'}
-                                onChange={(e) =>
-                                  updateTier(index, 'groupCategory', e.target.value)
-                                }
-                                className={inputCls('groupCategory')}
-                              >
-                                {GROUP_CATEGORIES.map((gc) => (
-                                  <option key={gc} value={gc}>
-                                    {gc}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                                People Per Unit
-                              </label>
-                              <input
-                                type="number"
-                                min={1}
-                                value={occupants}
-                                onChange={(e) =>
-                                  updateTier(
-                                    index,
-                                    'occupantsPerUnit',
-                                    Math.max(1, Number(e.target.value) || 1),
-                                  )
-                                }
-                                placeholder="Guests per unit (e.g., 4)"
-                                className={inputCls('occupantsPerUnit')}
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                                Custom Price Rule
-                              </label>
-                              <select
-                                value={mode}
-                                onChange={(e) =>
-                                  updateTier(
-                                    index,
-                                    'pricingMode',
-                                    e.target.value as
-                                      | 'PER_OCCUPANT'
-                                      | 'BUNDLE_FIXED',
-                                  )
-                                }
-                                className={inputCls('pricingMode')}
-                              >
-                                <option value="BUNDLE_FIXED">
-                                  Fixed Price Per Subgroup
-                                </option>
-                                <option value="PER_OCCUPANT">
-                                  Per Person in Subgroup
-                                </option>
-                              </select>
-                            </div>
-                          </>
-                        )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -933,40 +991,46 @@ export default function EditEventPage() {
             </div>
           </div>
         )}
-      </div>
 
-      <div className="flex justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setStep((s) => Math.max(1, s - 1))}
-          disabled={step === 1}
-          className="px-5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-        >
-          Back
-        </button>
-        {step < 3 ? (
-          <button
-            type="button"
-            onClick={handleContinue}
-            className="px-6 py-2.5 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
-          >
-            Continue →
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 transition-all"
-          >
-            {saving ? (
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
+        <div className="flex items-center justify-between gap-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+          {step > 1 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              onClick={() => setStep((s) => s - 1)}
+            >
+              Previous
+            </Button>
+          ) : (
+            <div />
+          )}
+
+          {step < 3 ? (
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={handleContinue}
+              className="gap-2 bg-brand-gradient text-white border-none"
+            >
+              Continue <ArrowRight className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              isLoading={saving}
+              disabled={saving}
+              onClick={() => void handleSave()}
+              className="gap-2 bg-brand-gradient text-white border-none"
+            >
               <Save className="w-4 h-4" />
-            )}
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
-        )}
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

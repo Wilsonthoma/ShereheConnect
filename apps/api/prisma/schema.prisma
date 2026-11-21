@@ -313,6 +313,8 @@ model Event {
   county                String      @db.VarChar(100)
   latitude              Float?
   longitude             Float?
+  locationAccuracyMeters Int?       @map("location_accuracy_meters")
+  directionsUrl         String?     @map("directions_url") @db.Text
   startsAt              DateTime    @map("starts_at") @db.Timestamptz
   endsAt                DateTime    @map("ends_at") @db.Timestamptz
   timezone              String      @default("Africa/Nairobi") @db.VarChar(50)
@@ -342,6 +344,7 @@ model Event {
   @@index([status, isFeatured, startsAt])
   @@index([startsAt])
   @@index([county])
+  @@index([latitude, longitude])
   @@index([categoryId])
   @@map("events")
 }

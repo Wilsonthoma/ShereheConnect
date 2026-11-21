@@ -1,13 +1,58 @@
-import {
-  Injectable,
-  NotFoundException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventFilterDto } from './dto/event-filter.dto';
 
 const COMPLETION_SWEEP_COOLDOWN_MS = 30_000;
+
+export function normalizeCoordinate(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Number(parsed.toFixed(6));
+}
+
+export function isValidLatLng(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): lat is number {
+  return (
+    typeof lat === 'number' &&
+    typeof lng === 'number' &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180
+  );
+}
+
+export function buildDirectionsUrl(params: {
+  directionsUrl?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  venueName?: string | null;
+  address?: string | null;
+  county?: string | null;
+}): string | null {
+  if (params.directionsUrl && params.directionsUrl.trim()) {
+    return params.directionsUrl.trim();
+  }
+
+  if (isValidLatLng(params.latitude, params.longitude)) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+      `${params.latitude},${params.longitude}`,
+    )}`;
+  }
+
+  const query = [params.venueName, params.address, params.county]
+    .filter((part): part is string => Boolean(part && part.trim()))
+    .join(', ');
+
+  if (!query) return null;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+    query,
+  )}`;
+}
 
 @Injectable()
 export class EventsService {
@@ -68,7 +113,7 @@ export class EventsService {
     if (filter.categoryId) where.categoryId = filter.categoryId;
     if (filter.county) where.county = filter.county;
 
-    const [total, items] = await this.prisma.$transaction([
+    const [total, rawItems] = await this.prisma.$transaction([
       this.prisma.event.count({ where }),
       this.prisma.event.findMany({
         where,
@@ -81,7 +126,12 @@ export class EventsService {
           slug: true,
           coverImageUrl: true,
           venueName: true,
+          address: true,
           county: true,
+          latitude: true,
+          longitude: true,
+          locationAccuracyMeters: true,
+          directionsUrl: true,
           startsAt: true,
           endsAt: true,
           status: true,
@@ -121,6 +171,25 @@ export class EventsService {
       }),
     ]);
 
+    const items = rawItems.map((item) => {
+      const latitude = normalizeCoordinate(item.latitude);
+      const longitude = normalizeCoordinate(item.longitude);
+      return {
+        ...item,
+        latitude,
+        longitude,
+        locationAccuracyMeters: item.locationAccuracyMeters ?? null,
+        directionsUrl: buildDirectionsUrl({
+          directionsUrl: item.directionsUrl,
+          latitude,
+          longitude,
+          venueName: item.venueName,
+          address: item.address,
+          county: item.county,
+        }),
+      };
+    });
+
     return { total, limit, offset, items };
   }
 
@@ -148,6 +217,8 @@ export class EventsService {
         county: true,
         latitude: true,
         longitude: true,
+        locationAccuracyMeters: true,
+        directionsUrl: true,
         startsAt: true,
         endsAt: true,
         timezone: true,
@@ -202,7 +273,23 @@ export class EventsService {
       throw new NotFoundException('Event not found');
     }
 
-    return event;
+    const latitude = normalizeCoordinate(event.latitude);
+    const longitude = normalizeCoordinate(event.longitude);
+
+    return {
+      ...event,
+      latitude,
+      longitude,
+      locationAccuracyMeters: event.locationAccuracyMeters ?? null,
+      directionsUrl: buildDirectionsUrl({
+        directionsUrl: event.directionsUrl,
+        latitude,
+        longitude,
+        venueName: event.venueName,
+        address: event.address,
+        county: event.county,
+      }),
+    };
   }
 
   /** Helper: generate a unique slug from title */
