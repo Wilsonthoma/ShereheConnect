@@ -1,3 +1,5 @@
+import { getToken, refreshAccessToken } from '@/lib/auth';
+
 export type BookingStatus =
   | 'PENDING'
   | 'PAYMENT_RECEIVED'
@@ -145,20 +147,12 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') ||
   'http://localhost:3001';
 
-function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return (
-    window.localStorage.getItem('accessToken') ||
-    window.localStorage.getItem('token') ||
-    null
-  );
-}
-
 async function request<T>(
   path: string,
   init: RequestInit = {},
+  retryOn401 = true,
 ): Promise<T> {
-  const token = getAuthToken();
+  const token = getToken();
   const headers = new Headers(init.headers);
 
   if (!headers.has('Content-Type') && init.body) {
@@ -174,6 +168,18 @@ async function request<T>(
     headers,
     credentials: 'include',
   });
+
+  if (response.status === 401 && retryOn401) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      const retryHeaders = new Headers(init.headers);
+      if (!retryHeaders.has('Content-Type') && init.body) {
+        retryHeaders.set('Content-Type', 'application/json');
+      }
+      retryHeaders.set('Authorization', `Bearer ${newToken}`);
+      return request<T>(path, { ...init, headers: retryHeaders }, false);
+    }
+  }
 
   const text = await response.text();
   let data: unknown = null;
@@ -253,3 +259,5 @@ export const bookingsApi = {
     });
   },
 };
+
+export default bookingsApi;

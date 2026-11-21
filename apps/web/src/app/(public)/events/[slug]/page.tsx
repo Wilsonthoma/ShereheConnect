@@ -46,6 +46,8 @@ interface EventDetail {
   } | null;
 }
 
+type AttendanceMode = 'INDIVIDUAL' | 'GROUP';
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') ||
   'http://localhost:3001';
@@ -85,7 +87,8 @@ export default function EventDetailPage() {
   const slug = params?.slug ?? '';
   const { t, language } = useLanguage();
 
-  const localeTag = language === 'sw' ? 'sw-KE' : 'en-KE';
+  const isSw = language === 'sw';
+  const localeTag = isSw ? 'sw-KE' : 'en-KE';
 
   const formatKes = (amount: number): string => {
     if (amount === 0) return t('common.free');
@@ -121,13 +124,39 @@ export default function EventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [attendanceMode, setAttendanceMode] =
+    useState<AttendanceMode>('INDIVIDUAL');
   const [selectedTierId, setSelectedTierId] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
   const [submitting, setSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
-  const [createdBooking, setCreatedBooking] = useState<BookingRecord | null>(
-    null,
+
+  const tiers = useMemo(() => event?.ticketTiers ?? [], [event]);
+
+  const individualTiers = useMemo(
+    () => tiers.filter((tier) => !tier.isGroupSubgroup),
+    [tiers],
   );
+
+  const groupTiers = useMemo(
+    () => tiers.filter((tier) => Boolean(tier.isGroupSubgroup)),
+    [tiers],
+  );
+
+  const hasBothModes = individualTiers.length > 0 && groupTiers.length > 0;
+
+  const visibleTiers = useMemo(() => {
+    if (hasBothModes) {
+      return attendanceMode === 'GROUP' ? groupTiers : individualTiers;
+    }
+    if (groupTiers.length > 0 && attendanceMode === 'GROUP') {
+      return groupTiers;
+    }
+    if (individualTiers.length > 0) {
+      return individualTiers;
+    }
+    return tiers;
+  }, [hasBothModes, attendanceMode, groupTiers, individualTiers, tiers]);
 
   useEffect(() => {
     if (!slug) return;
@@ -156,14 +185,28 @@ export default function EventDetailPage() {
         const loadedEvent: EventDetail = data?.event ?? data;
         setEvent(loadedEvent);
 
-        const tiers = loadedEvent.ticketTiers ?? [];
+        const loadedTiers = loadedEvent.ticketTiers ?? [];
+        const soloTiers = loadedTiers.filter((item) => !item.isGroupSubgroup);
+        const grpTiers = loadedTiers.filter((item) =>
+          Boolean(item.isGroupSubgroup),
+        );
+
+        const initialMode: AttendanceMode =
+          soloTiers.length > 0
+            ? 'INDIVIDUAL'
+            : grpTiers.length > 0
+              ? 'GROUP'
+              : 'INDIVIDUAL';
+        setAttendanceMode(initialMode);
+
+        const pool =
+          initialMode === 'INDIVIDUAL' && soloTiers.length > 0
+            ? soloTiers
+            : loadedTiers;
         const firstAvailable =
-          tiers.find(
-            (t) => t.isActive !== false && getAvailableCount(t) > 0,
-          ) ?? tiers[0];
-        if (firstAvailable) {
-          setSelectedTierId(firstAvailable.id);
-        }
+          pool.find((item) => item.isActive !== false && getAvailableCount(item) > 0) ??
+          pool[0];
+        setSelectedTierId(firstAvailable ? firstAvailable.id : '');
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : t('evt.detail.loadError'));
@@ -178,11 +221,25 @@ export default function EventDetailPage() {
     };
   }, [slug, t]);
 
-  const tiers = useMemo(() => event?.ticketTiers ?? [], [event]);
+  function handleSelectAttendanceMode(mode: AttendanceMode) {
+    setAttendanceMode(mode);
+    const pool =
+      mode === 'GROUP'
+        ? groupTiers
+        : individualTiers.length > 0
+          ? individualTiers
+          : tiers;
+    const firstAvailable =
+      pool.find((item) => item.isActive !== false && getAvailableCount(item) > 0) ??
+      pool[0];
+    setSelectedTierId(firstAvailable ? firstAvailable.id : '');
+    setQuantity(1);
+    setBookingError(null);
+  }
 
   const selectedTier = useMemo(
-    () => tiers.find((t) => t.id === selectedTierId) ?? null,
-    [tiers, selectedTierId],
+    () => visibleTiers.find((item) => item.id === selectedTierId) ?? null,
+    [visibleTiers, selectedTierId],
   );
 
   const maxSelectable = useMemo(() => {
@@ -208,41 +265,26 @@ export default function EventDetailPage() {
     return calculateTierSubtotalKes(selectedTier, quantity);
   }, [selectedTier, quantity]);
 
-  const issuedTickets = useMemo(() => {
-    if (!createdBooking) return [];
-    if (
-      Array.isArray(createdBooking.eTickets) &&
-      createdBooking.eTickets.length > 0
-    ) {
-      return createdBooking.eTickets;
-    }
-    return createdBooking.eTicket ? [createdBooking.eTicket] : [];
-  }, [createdBooking]);
-
   async function handleBookTickets(e: React.FormEvent) {
     e.preventDefault();
     if (!event || !selectedTier) return;
 
     setSubmitting(true);
     setBookingError(null);
-    setCreatedBooking(null);
 
     try {
-      const booking = await bookingsApi.createBooking({
+      const booking: BookingRecord = await bookingsApi.createBooking({
         eventId: event.id,
         ticketTierId: selectedTier.id,
         quantity,
       });
-      setCreatedBooking(booking);
 
-      const refreshRes = await fetch(
-        `${API_BASE_URL}/events/${encodeURIComponent(slug)}`,
-        { credentials: 'include' },
-      );
-      if (refreshRes.ok) {
-        const refreshed = await refreshRes.json();
-        setEvent(refreshed?.event ?? refreshed);
+      if (booking.status === 'CONFIRMED' && totalKes === 0) {
+        router.push('/tickets');
+        return;
       }
+
+      router.push(`/bookings/${encodeURIComponent(booking.id)}/pay`);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : t('evt.detail.createFailed');
@@ -250,13 +292,10 @@ export default function EventDetailPage() {
         message.toLowerCase().includes('unauthorized') ||
         message.toLowerCase().includes('401')
       ) {
-        router.push(
-          `/login?redirect=${encodeURIComponent(`/events/${slug}`)}`,
-        );
+        router.push(`/login?next=${encodeURIComponent(`/events/${slug}`)}`);
         return;
       }
       setBookingError(message);
-    } finally {
       setSubmitting(false);
     }
   }
@@ -291,13 +330,6 @@ export default function EventDetailPage() {
     );
   }
 
-  const createdOccupantsCount =
-    createdBooking &&
-    typeof createdBooking.occupantsCount === 'number' &&
-    createdBooking.occupantsCount > 0
-      ? createdBooking.occupantsCount
-      : 0;
-
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] transition-colors">
       <div className="container-fluid py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -316,7 +348,7 @@ export default function EventDetailPage() {
                 {event.county || t('common.kenya')}
                 {event.venueName ? ` / ${event.venueName}` : ''}
               </p>
-              {event.allowGroupBookings && (
+              {event.allowGroupBookings && groupTiers.length > 0 && (
                 <span className="inline-flex items-center rounded-full bg-[#E0F2FE] dark:bg-[#29ABE2]/20 px-2.5 py-0.5 text-[11px] font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
                   {t('evt.detail.groupEnabled')}
                 </span>
@@ -369,7 +401,9 @@ export default function EventDetailPage() {
               {t('evt.detail.selectHeading')}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {t('evt.detail.selectHelper')}
+              {isSw
+                ? 'Chagua kwanza jinsi utakavyohudhuria (Binafsi au Kikundi), kisha chagua kifurushi na idadi.'
+                : 'First choose how you want to attend (Individual or Group), then choose a tier and quantity.'}
             </p>
           </div>
 
@@ -379,8 +413,44 @@ export default function EventDetailPage() {
             </p>
           ) : (
             <form onSubmit={handleBookTickets} className="space-y-4">
+              {hasBothModes && (
+                <div className="space-y-1.5">
+                  <span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    {isSw ? 'Jinsi ya Kuhudhuria' : 'How Are You Attending?'}
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 dark:bg-[#2B2B2B] p-1 border border-slate-200 dark:border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAttendanceMode('INDIVIDUAL')}
+                      className={`rounded-lg py-2 px-3 text-xs font-semibold transition-all ${
+                        attendanceMode === 'INDIVIDUAL'
+                          ? 'bg-white dark:bg-[#3A3A3A] text-[#1A8CC4] dark:text-[#29ABE2] shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {isSw
+                        ? `Binafsi (${individualTiers.length})`
+                        : `Individual (${individualTiers.length})`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAttendanceMode('GROUP')}
+                      className={`rounded-lg py-2 px-3 text-xs font-semibold transition-all ${
+                        attendanceMode === 'GROUP'
+                          ? 'bg-white dark:bg-[#3A3A3A] text-[#1A8CC4] dark:text-[#29ABE2] shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {isSw
+                        ? `Kikundi (${groupTiers.length})`
+                        : `Group (${groupTiers.length})`}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2.5">
-                {tiers.map((tier) => {
+                {visibleTiers.map((tier) => {
                   const available = getAvailableCount(tier);
                   const disabled = tier.isActive === false || available <= 0;
                   const isSelected = tier.id === selectedTierId;
@@ -550,86 +620,6 @@ export default function EventDetailPage() {
               {bookingError && (
                 <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs font-medium text-red-600 dark:text-red-400">
                   {bookingError}
-                </div>
-              )}
-
-              {createdBooking && (
-                <div className="rounded-xl border border-[#29ABE2]/50 bg-[#E0F2FE]/60 dark:bg-[#2B2B2B] p-4 space-y-2.5 text-xs text-slate-800 dark:text-slate-100">
-                  <p className="font-bold text-sm text-[#1A8CC4] dark:text-[#29ABE2]">
-                    {createdBooking.status === 'CONFIRMED'
-                      ? t('evt.detail.confirmedTitle')
-                      : t('evt.detail.heldTitle')}
-                  </p>
-                  <p>
-                    {t('evt.detail.referenceLabel')}{' '}
-                    <span className="font-mono font-semibold">
-                      {createdBooking.bookingReference}
-                    </span>
-                  </p>
-                  <p>
-                    {t('evt.detail.bookingSummaryLine', {
-                      qty: createdBooking.quantity,
-                      tierName: createdBooking.ticketTier.name,
-                      occupantsPart:
-                        createdOccupantsCount > 0
-                          ? t('evt.detail.bookingOccupantsPart', {
-                              count: createdOccupantsCount,
-                            })
-                          : '',
-                      total: formatKes(createdBooking.totalAmountKes),
-                    })}
-                  </p>
-
-                  {createdBooking.status === 'CONFIRMED' &&
-                  issuedTickets.length > 0 ? (
-                    <div className="space-y-1 pt-1">
-                      <p className="font-semibold text-slate-900 dark:text-white">
-                        {t('evt.detail.issuedTicketsHeading', {
-                          count: issuedTickets.length,
-                        })}
-                      </p>
-                      <ul className="space-y-1 font-mono text-[11px]">
-                        {issuedTickets.map((ticket, idx) => (
-                          <li
-                            key={ticket.id || ticket.ticketCode || idx}
-                            className="rounded bg-white/80 dark:bg-[#3A3A3A] px-2 py-1 flex items-center justify-between gap-2"
-                          >
-                            <span>#{ticket.ticketIndex ?? idx + 1}</span>
-                            <span className="font-semibold">
-                              {ticket.ticketCode}
-                            </span>
-                            <span className="text-[10px] uppercase">
-                              {ticket.status}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : (
-                    <p className="text-slate-600 dark:text-slate-300">
-                      {t('evt.detail.payBeforeHelper', {
-                        ref: createdBooking.bookingReference,
-                        expiresAt: formatDateTime(createdBooking.expiresAt),
-                      })}
-                    </p>
-                  )}
-
-                  <div className="pt-1 flex gap-4">
-                    <Link
-                      href="/bookings"
-                      className="font-semibold text-[#1A8CC4] dark:text-[#29ABE2] underline"
-                    >
-                      {t('evt.detail.viewBookingsLink')}
-                    </Link>
-                    {issuedTickets.length > 0 && (
-                      <Link
-                        href="/tickets"
-                        className="font-semibold text-[#1A8CC4] dark:text-[#29ABE2] underline"
-                      >
-                        {t('evt.detail.viewTicketsLink')}
-                      </Link>
-                    )}
-                  </div>
                 </div>
               )}
             </form>
