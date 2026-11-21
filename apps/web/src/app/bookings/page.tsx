@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Button } from '@/components/ui';
 import {
   bookingsApi,
   type BookingRecord,
@@ -251,16 +252,18 @@ function BookingCard({
         </div>
 
         {canCancel && (
-          <button
+          <Button
             type="button"
+            variant="danger"
+            size="sm"
+            isLoading={cancellingId === booking.id}
             disabled={cancellingId === booking.id}
             onClick={() => onCancel(booking.id)}
-            className="rounded-full border border-red-500/50 px-4 py-1.5 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
           >
             {cancellingId === booking.id
               ? t('bookings.card.cancelling')
               : t('bookings.card.cancelButton')}
-          </button>
+          </Button>
         )}
       </div>
     </article>
@@ -364,8 +367,14 @@ export default function BookingsPage() {
             <p className="text-sm text-slate-600 dark:text-slate-300">
               {t('bookings.empty')}
             </p>
-            <Link href="/events" className="btn-coddy inline-block text-sm">
-              {t('bookings.browseEvents')}
+            <Link href="/events" className="inline-block">
+              <Button
+                variant="primary"
+                size="md"
+                className="bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none rounded-full px-6 py-2.5 text-sm"
+              >
+                {t('bookings.browseEvents')}
+              </Button>
             </Link>
           </div>
         ) : (

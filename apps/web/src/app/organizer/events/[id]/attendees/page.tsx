@@ -7,6 +7,30 @@ import { bookingsApi, type BookingRecord } from '@/lib/bookingsApi';
 import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 
+interface TicketEntry {
+  id?: string;
+  ticketCode: string;
+  status: string;
+}
+
+interface TierDetail {
+  name: string;
+  isGroupSubgroup?: boolean;
+  groupCategory?: string | null;
+  occupantsPerUnit?: number | null;
+  pricingMode?: 'PER_OCCUPANT' | 'BUNDLE_FIXED' | null;
+}
+
+interface AttendeeBookingItem extends BookingRecord {
+  ticketTier: TierDetail;
+  eTickets?: TicketEntry[];
+  eTicket?: TicketEntry | null;
+}
+
+interface ListEventBookingsResponse {
+  items?: AttendeeBookingItem[];
+}
+
 function formatKes(amount: number): string {
   if (amount === 0) return 'FREE';
   return `KES ${amount.toLocaleString('en-KE')}`;
@@ -22,15 +46,21 @@ function formatDateTime(iso?: string | null): string {
   });
 }
 
-function getBookingSeats(b: BookingRecord): number {
+function getBookingSeats(b: AttendeeBookingItem): number {
   return b.occupantsCount && b.occupantsCount > 0 ? b.occupantsCount : b.quantity;
+}
+
+function getTicketsForBooking(b: AttendeeBookingItem): TicketEntry[] {
+  if (Array.isArray(b.eTickets)) return b.eTickets;
+  if (b.eTicket) return [b.eTicket];
+  return [];
 }
 
 export default function EventAttendeesPage() {
   const params = useParams<{ id: string }>();
   const eventId = params?.id ?? '';
 
-  const [bookings, setBookings] = useState<BookingRecord[]>([]);
+  const [bookings, setBookings] = useState<AttendeeBookingItem[]>([]);
   const [search, setSearch] = useState('');
   const [checkInCode, setCheckInCode] = useState('');
   const [checkingIn, setCheckingIn] = useState(false);
@@ -42,10 +72,14 @@ export default function EventAttendeesPage() {
     setLoading(true);
     setError(null);
     try {
-      const res: any = await bookingsApi.listEventBookings(eventId);
-      const list = Array.isArray(res) ? res : res?.items ?? [];
+      const res: unknown = await bookingsApi.listEventBookings(eventId);
+      const list = Array.isArray(res)
+        ? (res as AttendeeBookingItem[])
+        : Array.isArray((res as ListEventBookingsResponse)?.items)
+          ? (res as ListEventBookingsResponse).items!
+          : [];
       setBookings(list);
-    } catch (err) {
+    } catch (err: unknown) {
       setError(
         err instanceof Error ? err.message : 'Failed to load event bookings',
       );
@@ -55,13 +89,16 @@ export default function EventAttendeesPage() {
   }, [eventId]);
 
   useEffect(() => {
-    loadAttendees();
+    void loadAttendees();
   }, [loadAttendees]);
 
   const handleCheckIn = async (codeToUse?: string) => {
     const raw = (codeToUse ?? checkInCode).trim();
     if (!raw) {
-      toast.error('Enter a ticket code', 'Provide a TKT code or QR token to check in.');
+      toast.error(
+        'Enter a ticket code',
+        'Provide a TKT code or QR token to check in.',
+      );
       return;
     }
 
@@ -78,7 +115,8 @@ export default function EventAttendeesPage() {
         },
         body: JSON.stringify({ ticketCode: raw, eventId }),
       });
-      const data = await resp.json();
+      const data: { alreadyCheckedIn?: boolean; message?: string } =
+        await resp.json();
       if (!resp.ok) {
         throw new Error(data?.message || 'Check-in failed');
       }
@@ -86,13 +124,16 @@ export default function EventAttendeesPage() {
       if (data?.alreadyCheckedIn) {
         toast.success('Already checked in', `${raw} was already admitted.`);
       } else {
-        toast.success('Ticket checked in', `${raw} marked as CHECKED_IN.`);
+        toast.success('Ticket checked in', `${raw} marked as checked in.`);
       }
 
       if (!codeToUse) setCheckInCode('');
       await loadAttendees();
-    } catch (err: any) {
-      toast.error('Check-in error', err?.message || 'Could not verify ticket.');
+    } catch (err: unknown) {
+      toast.error(
+        'Check-in error',
+        err instanceof Error ? err.message : 'Could not verify ticket.',
+      );
     } finally {
       setCheckingIn(false);
     }
@@ -106,11 +147,13 @@ export default function EventAttendeesPage() {
       const email = b.attendee?.email?.toLowerCase() ?? '';
       const phone = b.attendee?.phone?.toLowerCase() ?? '';
       const ref = b.bookingReference.toLowerCase();
-      const ticketList: any[] = Array.isArray((b as any).eTickets)
-        ? (b as any).eTickets
-        : b.eTicket
-          ? [b.eTicket]
-          : [];
+      const tierLabel = [
+        b.ticketTier?.name ?? '',
+        b.ticketTier?.groupCategory ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      const ticketList = getTicketsForBooking(b);
       const matchesTicket = ticketList.some((t) =>
         (t?.ticketCode ?? '').toLowerCase().includes(q),
       );
@@ -119,6 +162,7 @@ export default function EventAttendeesPage() {
         email.includes(q) ||
         phone.includes(q) ||
         ref.includes(q) ||
+        tierLabel.includes(q) ||
         matchesTicket
       );
     });
@@ -154,7 +198,7 @@ export default function EventAttendeesPage() {
             Event Attendees &amp; Bookings
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            Monitor reservations, confirmed tickets, group occupants, and direct payment status.
+            Monitor reservations, confirmed tickets, group occupants, and payment status.
           </p>
         </div>
 
@@ -210,7 +254,7 @@ export default function EventAttendeesPage() {
             Search Bookings &amp; Guests
           </label>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
-            Filter by attendee name, email, phone number, booking reference, or ticket code.
+            Filter by attendee name, email, phone number, booking reference, subgroup, or ticket code.
           </p>
           <input
             id="attendee-search-input"
@@ -238,14 +282,16 @@ export default function EventAttendeesPage() {
               type="text"
               value={checkInCode}
               onChange={(e) => setCheckInCode(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCheckIn()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCheckIn();
+              }}
               placeholder="Enter ticket code (e.g., TKT-1234ABCD)..."
               className="flex-1 rounded-xl border-[1.5px] border-slate-300 dark:border-slate-600 bg-white dark:bg-[#3A3A3A] px-3.5 py-2 text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:border-[#29ABE2]"
             />
             <button
               type="button"
               disabled={checkingIn}
-              onClick={() => handleCheckIn()}
+              onClick={() => void handleCheckIn()}
               className="rounded-xl bg-[#29ABE2] hover:bg-[#1A8CC4] text-white px-4 py-2 text-xs font-bold uppercase tracking-wide disabled:opacity-50 transition-colors"
             >
               {checkingIn ? 'Checking...' : 'Check In'}
@@ -285,12 +331,8 @@ export default function EventAttendeesPage() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
               {filteredBookings.map((b) => {
                 const seats = getBookingSeats(b);
-                const tierAny: any = b.ticketTier;
-                const ticketList: any[] = Array.isArray((b as any).eTickets)
-                  ? (b as any).eTickets
-                  : b.eTicket
-                    ? [b.eTicket]
-                    : [];
+                const tier = b.ticketTier;
+                const ticketList = getTicketsForBooking(b);
 
                 return (
                   <tr
@@ -311,10 +353,10 @@ export default function EventAttendeesPage() {
                     </td>
                     <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200">
                       <div>
-                        {b.quantity}x {b.ticketTier.name}
-                        {tierAny?.isGroupSubgroup
-                          ? ` (${tierAny.groupCategory || 'GROUP'} • ${seats} guests)`
-                          : ''}
+                        {b.quantity}x {tier.name}
+                        {tier.isGroupSubgroup
+                          ? ` (${tier.groupCategory || 'GROUP'} • ${seats} guests)`
+                          : ' (Individual)'}
                       </div>
                     </td>
                     <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white">
@@ -337,7 +379,7 @@ export default function EventAttendeesPage() {
                                 key={t.id || t.ticketCode}
                                 type="button"
                                 disabled={checked || b.status !== 'CONFIRMED'}
-                                onClick={() => handleCheckIn(t.ticketCode)}
+                                onClick={() => void handleCheckIn(t.ticketCode)}
                                 className="rounded-md border border-[#29ABE2]/40 bg-[#E0F2FE]/60 dark:bg-[#2B2B2B] px-2 py-0.5 text-[11px] font-semibold text-slate-800 dark:text-slate-100 hover:bg-[#29ABE2] hover:text-white disabled:opacity-70 transition-colors"
                               >
                                 {t.ticketCode} ({t.status})

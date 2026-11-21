@@ -1,13 +1,32 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter, usePathname } from 'next/navigation';
-import { RequireRole } from '@/components/auth';
-import { OrganizerShell } from '@/components/organizer';
 import { organizerApi } from '@/lib/organizerApi';
 import { FullPageLoader } from '@/components/ui';
 
-export default function OrganizerLayout({ children }: { children: React.ReactNode }) {
+const RequireRole = dynamic(
+  () => import('@/components/auth').then((mod) => mod.RequireRole),
+  {
+    ssr: false,
+    loading: () => <FullPageLoader message="Verifying access..." />,
+  },
+);
+
+const OrganizerShell = dynamic(
+  () => import('@/components/organizer').then((mod) => mod.OrganizerShell),
+  {
+    ssr: false,
+    loading: () => <FullPageLoader message="Loading organizer workspace..." />,
+  },
+);
+
+export default function OrganizerLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [isChecking, setIsChecking] = useState(true);
@@ -23,7 +42,11 @@ export default function OrganizerLayout({ children }: { children: React.ReactNod
       .getProfile()
       .then((profile) => {
         // If profile doesn't exist or KYC is NOT submitted, force them to onboarding
-        if (!profile || !profile.kycStatus || profile.kycStatus === 'NOT_SUBMITTED') {
+        if (
+          !profile ||
+          !profile.kycStatus ||
+          profile.kycStatus === 'NOT_SUBMITTED'
+        ) {
           router.replace('/organizer/onboarding');
         } else {
           setIsChecking(false);

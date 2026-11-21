@@ -185,7 +185,7 @@ model OrganizerProfile {
   userId       String @unique @map("user_id") @db.Uuid
   businessName String @map("business_name") @db.VarChar(200)
 
-  // ── NEW: Rich organizer profile fields ──
+  // ── Rich organizer profile fields ──
   bio     String? @db.Text
   logoUrl String? @map("logo_url") @db.Text
   phone   String? @db.VarChar(20)
@@ -422,6 +422,8 @@ model Booking {
   @@index([bookingReference])
   @@index([attendeeId])
   @@index([attendeeId, createdAt])
+  @@index([attendeeId, eventId])
+  @@index([attendeeId, eventId, status])
   @@index([eventId])
   @@index([status])
   @@index([status, expiresAt])
@@ -526,7 +528,7 @@ model AuditLog {
   entityType String   @map("entity_type") @db.VarChar(50)
   entityId   String?  @map("entity_id") @db.Uuid
   changes    Json?
-  ipAddress  String?  @map("ip_address")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
   userAgent  String?  @map("user_agent")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
 
@@ -559,4 +561,4 @@ model LoginSession {
   @@index([userId, isActive])
   @@index([createdAt])
   @@map("login_sessions")
-} m& rs
+}

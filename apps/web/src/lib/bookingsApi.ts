@@ -258,6 +258,20 @@ export const bookingsApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  // 🔥 NEW: Verify M-Pesa SMS
+  verifyMpesaSms(
+    bookingId: string,
+    smsText: string,
+  ): Promise<{ status: string; message: string; redirectTo: string }> {
+    return request<{ status: string; message: string; redirectTo: string }>(
+      `/bookings/${encodeURIComponent(bookingId)}/verify-sms`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ smsText }),
+      },
+    );
+  },
 };
 
 export default bookingsApi;

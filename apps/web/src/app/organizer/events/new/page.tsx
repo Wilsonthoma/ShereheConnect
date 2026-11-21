@@ -4,12 +4,24 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Trash2, Save, Clock, ShieldAlert, ArrowRight } from 'lucide-react';
-import { organizerEventsApi, TicketTier } from '@/lib/eventsApi';
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Save,
+  Clock,
+  ShieldAlert,
+  ArrowRight,
+} from 'lucide-react';
+import {
+  organizerEventsApi,
+  type CreateEventPayload,
+  type TicketTier,
+} from '@/lib/eventsApi';
 import { organizerApi } from '@/lib/organizerApi';
 import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
-import { FullPageLoader } from '@/components/ui';
+import { Button, FullPageLoader } from '@/components/ui';
 import { KENYA_COUNTIES, lookupCounty } from '@/lib/kenya-counties';
 
 const ImageUploader = dynamic(
@@ -24,14 +36,28 @@ const ImageUploader = dynamic(
   },
 );
 
-const CATEGORIES = ['FESTIVAL', 'CONFERENCE', 'ENTERTAINMENT', 'SPORTS', 'ARTS', 'COMMUNITY', 'EDUCATION', 'BUSINESS'];
+const CATEGORIES = [
+  'FESTIVAL',
+  'CONFERENCE',
+  'ENTERTAINMENT',
+  'SPORTS',
+  'ARTS',
+  'COMMUNITY',
+  'EDUCATION',
+  'BUSINESS',
+];
+
 const FEATURE_OPTIONS = [
-  { id: 'general', label: 'General Admission' }, { id: 'standard', label: 'Standard Entry' },
-  { id: 'vip', label: 'VIP Access' }, { id: 'wifi', label: 'Free Wi-Fi' },
-  { id: 'parking', label: 'Parking Available' }, { id: 'drinks', label: 'Drinks Included' },
+  { id: 'general', label: 'General Admission' },
+  { id: 'standard', label: 'Standard Entry' },
+  { id: 'vip', label: 'VIP Access' },
+  { id: 'wifi', label: 'Free Wi-Fi' },
+  { id: 'parking', label: 'Parking Available' },
+  { id: 'drinks', label: 'Drinks Included' },
   { id: 'food', label: 'Food Available' },
 ];
-const GROUP_CATEGORIES = ['FAMILY', 'COUPLE', 'FRIENDS', 'TABLE'];
+
+const GROUP_CATEGORIES = ['FAMILY', 'COUPLE', 'FRIENDS', 'TABLE'] as const;
 
 type CreateTierForm = TicketTier & {
   isGroupSubgroup?: boolean;
@@ -39,6 +65,309 @@ type CreateTierForm = TicketTier & {
   occupantsPerUnit?: number;
   pricingMode?: 'PER_OCCUPANT' | 'BUNDLE_FIXED';
 };
+
+interface TicketTiersConfiguratorProps {
+  allowGroupBookings: boolean;
+  isFeatured: boolean;
+  eventFeatures: string[];
+  ticketTiers: CreateTierForm[];
+  errors: Record<string, string>;
+  inputCls: (field: string) => string;
+  onToggleGroupBookings: (enabled: boolean) => void;
+  onAddGroupCategoryTier: (category: string) => void;
+  onToggleFeatured: (featured: boolean) => void;
+  onToggleFeature: (id: string) => void;
+  onUpdateTier: <K extends keyof CreateTierForm>(
+    index: number,
+    field: K,
+    value: CreateTierForm[K],
+  ) => void;
+  onAddTier: () => void;
+  onRemoveTier: (index: number) => void;
+}
+
+function TicketTiersConfiguratorImpl({
+  allowGroupBookings,
+  isFeatured,
+  eventFeatures,
+  ticketTiers,
+  errors,
+  inputCls,
+  onToggleGroupBookings,
+  onAddGroupCategoryTier,
+  onToggleFeatured,
+  onToggleFeature,
+  onUpdateTier,
+  onAddTier,
+  onRemoveTier,
+}: TicketTiersConfiguratorProps) {
+  return (
+    <div className="space-y-8">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+          <div>
+            <p className="font-bold text-sm text-slate-800 dark:text-slate-100">
+              Allow Group Bookings &amp; Subgroups
+            </p>
+            <p className="text-xs text-slate-500">
+              Enable group subgroups (Couple, Friends, Table, Family) and set a
+              custom KES price for each subgroup independently.
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allowGroupBookings}
+              onChange={(e) => onToggleGroupBookings(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-slate-200 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold" />
+          </label>
+        </div>
+
+        {allowGroupBookings && (
+          <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+              Add subgroup packages with custom prices:
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {GROUP_CATEGORIES.map((gc) => (
+                <Button
+                  key={gc}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onAddGroupCategoryTier(gc)}
+                  className="text-xs font-semibold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 px-2.5 py-1 h-auto rounded-lg hover:border-gold"
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  {gc}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+          <div>
+            <p className="font-bold text-sm text-slate-800 dark:text-slate-100">
+              Featured Event
+            </p>
+            <p className="text-xs text-slate-500">
+              Highlight this event to stand out.
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isFeatured}
+              onChange={(e) => onToggleFeatured(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-slate-200 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold" />
+          </label>
+        </div>
+
+        <div>
+          <p className="font-bold text-sm text-slate-800 dark:text-slate-100 mb-1">
+            Event Features
+          </p>
+          <p className="text-[11px] text-slate-400">
+            Check amenities or access perks included at the event.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-3">
+            {FEATURE_OPTIONS.map((opt) => (
+              <label
+                key={opt.id}
+                className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  checked={eventFeatures.includes(opt.id)}
+                  onChange={() => onToggleFeature(opt.id)}
+                  className="w-4 h-4 accent-gold rounded"
+                />
+                <span className="text-sm text-slate-700 dark:text-slate-300">
+                  {opt.label}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">
+              Individual Tiers &amp; Group Subgroups
+            </h3>
+            <p className="text-xs text-slate-500">
+              Each individual tier or group subgroup has its own independent KES
+              price.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onAddTier}
+            className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 px-3 py-1.5 h-auto rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1" /> Add Tier
+          </Button>
+        </div>
+
+        {errors.ticketTiers && (
+          <p className="text-xs font-semibold text-red-500">
+            {errors.ticketTiers}
+          </p>
+        )}
+
+        {ticketTiers.map((tier, index) => {
+          const isGroup = Boolean(allowGroupBookings && tier.isGroupSubgroup);
+          const mode = tier.pricingMode || 'BUNDLE_FIXED';
+          const occupants = Math.max(1, Number(tier.occupantsPerUnit || 1));
+
+          return (
+            <div
+              key={index}
+              className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3"
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-500 uppercase">
+                  {isGroup
+                    ? `Subgroup ${index + 1} (${tier.groupCategory || 'GROUP'})`
+                    : `Individual Tier ${index + 1}`}
+                </span>
+                {ticketTiers.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onRemoveTier(index)}
+                    aria-label={`Remove ticket tier ${index + 1}`}
+                    className="text-red-500 hover:text-red-600 p-1.5 h-auto min-w-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                    {isGroup ? 'Subgroup Name *' : 'Tier Name *'}
+                  </label>
+                  <input
+                    type="text"
+                    value={tier.name}
+                    onChange={(e) => onUpdateTier(index, 'name', e.target.value)}
+                    placeholder={
+                      isGroup
+                        ? 'e.g., Couple Package, VIP Table of 6'
+                        : 'e.g., Regular, VIP'
+                    }
+                    className={inputCls('tierName')}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                    {isGroup && mode === 'BUNDLE_FIXED'
+                      ? 'Subgroup Package Price (KES) *'
+                      : 'Price Per Person (KES) *'}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={tier.priceKes}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '');
+                      onUpdateTier(index, 'priceKes', val ? Number(val) : 0);
+                    }}
+                    placeholder="0 for free or custom KES price"
+                    className={inputCls('priceKes')}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                    {isGroup ? 'Available Packages / Units *' : 'Quantity Available *'}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={tier.quantityTotal}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '');
+                      onUpdateTier(index, 'quantityTotal', val ? Number(val) : 0);
+                    }}
+                    placeholder="e.g., 50"
+                    className={inputCls('quantityTotal')}
+                  />
+                </div>
+              </div>
+
+              {isGroup && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-200/70 dark:border-slate-700/70">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                      Group Category
+                    </label>
+                    <select
+                      value={tier.groupCategory || 'FRIENDS'}
+                      onChange={(e) =>
+                        onUpdateTier(index, 'groupCategory', e.target.value)
+                      }
+                      className={inputCls('groupCategory')}
+                    >
+                      {GROUP_CATEGORIES.map((gc) => (
+                        <option key={gc} value={gc}>
+                          {gc}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                      Occupants Per Package ({occupants})
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={occupants}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        onUpdateTier(
+                          index,
+                          'occupantsPerUnit',
+                          val ? Math.max(1, Number(val)) : 1,
+                        );
+                      }}
+                      className={inputCls('occupantsPerUnit')}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const TicketTiersConfigurator = dynamic(
+  () => Promise.resolve(TicketTiersConfiguratorImpl),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 w-full rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+    ),
+  },
+);
 
 export default function CreateEventPage() {
   const router = useRouter();
@@ -94,7 +423,7 @@ export default function CreateEventPage() {
       .finally(() => setGateLoading(false));
   }, []);
 
-  const updateForm = (field: string, value: any) => {
+  const updateForm = (field: string, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: '' }));
   };
@@ -108,12 +437,36 @@ export default function CreateEventPage() {
     }));
   };
 
-  const updateTier = (index: number, field: keyof CreateTierForm, value: any) => {
+  const updateTier = <K extends keyof CreateTierForm>(
+    index: number,
+    field: K,
+    value: CreateTierForm[K],
+  ) => {
     setForm((prev) => ({
       ...prev,
       ticketTiers: prev.ticketTiers.map((t, i) =>
         i === index ? { ...t, [field]: value } : t,
       ),
+    }));
+    setErrors((prev) => ({ ...prev, ticketTiers: '' }));
+  };
+
+  const handleToggleGroupBookings = (enabled: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      allowGroupBookings: enabled,
+      ticketTiers: enabled
+        ? prev.ticketTiers
+        : prev.ticketTiers.map((t) =>
+            t.isGroupSubgroup
+              ? {
+                  ...t,
+                  isGroupSubgroup: false,
+                  occupantsPerUnit: 1,
+                  pricingMode: 'PER_OCCUPANT',
+                }
+              : t,
+          ),
     }));
   };
 
@@ -139,6 +492,7 @@ export default function CreateEventPage() {
         },
       ],
     }));
+    setErrors((prev) => ({ ...prev, ticketTiers: '' }));
   };
 
   const validateStep = (s: number) => {
@@ -168,8 +522,19 @@ export default function CreateEventPage() {
       }
     }
     if (s === 3) {
-      if (form.ticketTiers.some((t) => !t.name.trim())) e.ticketTiers = 'All tiers must have a name';
-      if (form.ticketTiers.some((t) => t.quantityTotal <= 0)) e.ticketTiers = 'Quantity must be greater than 0';
+      if (form.ticketTiers.length === 0) {
+        e.ticketTiers = 'At least one ticket tier is required';
+      } else if (form.ticketTiers.some((t) => !t.name.trim())) {
+        e.ticketTiers = 'All tiers must have a name';
+      } else if (form.ticketTiers.some((t) => Number(t.quantityTotal) <= 0)) {
+        e.ticketTiers = 'Quantity must be greater than 0 for every tier';
+      } else if (
+        form.ticketTiers.some(
+          (t) => t.isGroupSubgroup && Number(t.occupantsPerUnit || 1) < 1,
+        )
+      ) {
+        e.ticketTiers = 'Subgroup seats/occupants per unit must be at least 1';
+      }
     }
     return e;
   };
@@ -177,13 +542,20 @@ export default function CreateEventPage() {
   const handleContinue = () => {
     const e = validateStep(step);
     setErrors(e);
-    if (Object.keys(e).length > 0) return toast.error('Missing details', Object.values(e)[0]);
+    if (Object.keys(e).length > 0) {
+      toast.error('Missing details', Object.values(e)[0]);
+      return;
+    }
     setStep((s) => s + 1);
   };
 
   const handleSave = async () => {
     const e = validateStep(3);
-    if (Object.keys(e).length > 0) return toast.error('Invalid form', Object.values(e)[0]);
+    setErrors(e);
+    if (Object.keys(e).length > 0) {
+      toast.error('Invalid form', Object.values(e)[0]);
+      return;
+    }
 
     const token = getToken();
     if (!token) {
@@ -194,9 +566,12 @@ export default function CreateEventPage() {
 
     setSaving(true);
     try {
-      const coords = lookupCounty(form.county) ?? { lat: -1.2921, lng: 36.8219 };
+      const coords = lookupCounty(form.county) ?? {
+        lat: -1.2921,
+        lng: 36.8219,
+      };
 
-      const payload: any = {
+      const payload = {
         title: form.title.trim(),
         description: form.description.trim(),
         categoryId: form.categoryId,
@@ -208,35 +583,44 @@ export default function CreateEventPage() {
         longitude: coords.lng,
         startsAt: new Date(form.startsAt).toISOString(),
         endsAt: new Date(form.endsAt).toISOString(),
-        maxAttendees: form.maxAttendees ? parseInt(form.maxAttendees, 10) : undefined,
+        maxAttendees: form.maxAttendees
+          ? parseInt(form.maxAttendees, 10)
+          : undefined,
         totalTicketsAvailable: form.totalTicketsAvailable
           ? parseInt(form.totalTicketsAvailable, 10)
           : undefined,
         allowGroupBookings: form.allowGroupBookings,
         isFeatured: form.isFeatured,
         eventFeatures: form.eventFeatures,
-        ticketTiers: form.ticketTiers.map((t, i) => ({
-          name: t.name.trim(),
-          priceKes: Number(t.priceKes),
-          quantityTotal: Number(t.quantityTotal),
-          isGroupSubgroup: Boolean(t.isGroupSubgroup),
-          groupCategory: t.isGroupSubgroup ? t.groupCategory || 'FRIENDS' : null,
-          occupantsPerUnit: t.isGroupSubgroup
+        ticketTiers: form.ticketTiers.map((t, i) => {
+          const isGroup = Boolean(form.allowGroupBookings && t.isGroupSubgroup);
+          const occupants = isGroup
             ? Math.max(1, Number(t.occupantsPerUnit || 1))
-            : 1,
-          pricingMode: t.isGroupSubgroup
-            ? t.pricingMode || 'PER_OCCUPANT'
-            : 'PER_OCCUPANT',
-          sortOrder: i,
-          isActive: true,
-        })),
-      };
+            : 1;
+          const mode = isGroup
+            ? t.pricingMode || 'BUNDLE_FIXED'
+            : 'PER_OCCUPANT';
+
+          return {
+            name: t.name.trim(),
+            priceKes: Math.max(0, Number(t.priceKes)),
+            quantityTotal: Math.max(1, Number(t.quantityTotal)),
+            isGroupSubgroup: isGroup,
+            groupCategory: isGroup ? t.groupCategory || 'FRIENDS' : null,
+            occupantsPerUnit: occupants,
+            pricingMode: mode,
+            sortOrder: i,
+            isActive: true,
+          };
+        }),
+      } as unknown as CreateEventPayload;
 
       const event = await organizerEventsApi.create(token, payload);
       toast.success('Event created!', 'Redirecting to details...');
       router.push(`/organizer/events/${event.id}`);
-    } catch (err: any) {
-      const message = err?.message ?? 'Unknown error';
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Unknown error while creating event';
       if (message.toLowerCase().includes('reached the limit')) {
         setUpgradeMessage(message);
       }
@@ -285,11 +669,14 @@ export default function CreateEventPage() {
           </p>
 
           {!isPending && (
-            <Link
-              href="/organizer/onboarding"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
-            >
-              Complete Onboarding <ArrowRight className="w-4 h-4" />
+            <Link href="/organizer/onboarding" className="inline-block">
+              <Button
+                variant="primary"
+                size="md"
+                className="gap-2 px-6 py-3 rounded-full bg-brand-gradient text-white border-none text-sm font-semibold"
+              >
+                Complete Onboarding <ArrowRight className="w-4 h-4" />
+              </Button>
             </Link>
           )}
         </div>
@@ -299,12 +686,15 @@ export default function CreateEventPage() {
 
   return (
     <div className="space-y-6 max-w-4xl pb-20">
-      <button
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => router.push('/organizer/events')}
-        className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-gold transition-colors"
+        className="gap-2 text-sm text-slate-500 hover:text-gold px-2 py-1 h-auto"
       >
         <ArrowLeft className="w-4 h-4" /> Back
-      </button>
+      </Button>
 
       <div>
         <h1 className="heading-display text-2xl md:text-3xl text-slate-800 dark:text-slate-100 mb-1">
@@ -346,7 +736,11 @@ export default function CreateEventPage() {
                   : 'text-slate-400'
               }`}
             >
-              {s === 1 ? 'Basic Info' : s === 2 ? 'Venue & Time' : 'Tickets & Extras'}
+              {s === 1
+                ? 'Basic Info'
+                : s === 2
+                  ? 'Venue & Time'
+                  : 'Tickets & Extras'}
             </span>
             {s < 3 && (
               <div
@@ -367,7 +761,8 @@ export default function CreateEventPage() {
                 Event Title *
               </label>
               <p className="text-[11px] text-slate-400 mb-1.5">
-                Enter the public name of your event (e.g., Nairobi Jazz &amp; Food Festival).
+                Enter the public name of your event (e.g., Nairobi Jazz &amp; Food
+                Festival).
               </p>
               <input
                 type="text"
@@ -401,7 +796,8 @@ export default function CreateEventPage() {
                 Cover Image *
               </label>
               <p className="text-[11px] text-slate-400 mb-1.5">
-                Upload a clear banner or poster image for event cards and detail pages.
+                Upload a clear banner or poster image for event cards and detail
+                pages.
               </p>
               <ImageUploader
                 value={form.coverImageUrl}
@@ -413,7 +809,8 @@ export default function CreateEventPage() {
                 Description *
               </label>
               <p className="text-[11px] text-slate-400 mb-1.5">
-                Describe the schedule, highlights, entry rules, and what group packages include.
+                Describe the schedule, highlights, entry rules, and what group
+                packages include.
               </p>
               <textarea
                 value={form.description}
@@ -448,7 +845,8 @@ export default function CreateEventPage() {
                 Address *
               </label>
               <p className="text-[11px] text-slate-400 mb-1.5">
-                Provide the street, road, or landmark directions so guests can find the venue.
+                Provide the street, road, or landmark directions so guests can find
+                the venue.
               </p>
               <input
                 type="text"
@@ -555,317 +953,79 @@ export default function CreateEventPage() {
         )}
 
         {step === 3 && (
-          <div className="space-y-8">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <div>
-                  <p className="font-bold text-sm text-slate-800 dark:text-slate-100">
-                    Allow Group Bookings &amp; Subgroups
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Enable multiple group tiers (Family, Couple, Friends, or Table) with occupant counts and bundle or per-occupant pricing.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.allowGroupBookings}
-                    onChange={(e) =>
-                      updateForm('allowGroupBookings', e.target.checked)
-                    }
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-200 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold"></div>
-                </label>
-              </div>
-
-              {form.allowGroupBookings && (
-                <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                    Quick-add group categories (select multiple):
-                  </span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {GROUP_CATEGORIES.map((gc) => (
-                      <button
-                        key={gc}
-                        type="button"
-                        onClick={() => addGroupCategoryTier(gc)}
-                        className="text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg hover:border-gold transition-colors"
-                      >
-                        <Plus className="w-3 h-3 inline mr-1" />
-                        {gc}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between p-4 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                <div>
-                  <p className="font-bold text-sm text-slate-800 dark:text-slate-100">
-                    Featured Event
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Highlight this event to stand out.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.isFeatured}
-                    onChange={(e) => updateForm('isFeatured', e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-200 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gold"></div>
-                </label>
-              </div>
-
-              <div>
-                <p className="font-bold text-sm text-slate-800 dark:text-slate-100 mb-1">
-                  Event Features
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  Check amenities or access perks included at the event.
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-3">
-                  {FEATURE_OPTIONS.map((opt) => (
-                    <label
-                      key={opt.id}
-                      className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={form.eventFeatures.includes(opt.id)}
-                        onChange={() => toggleFeature(opt.id)}
-                        className="w-4 h-4 accent-gold rounded"
-                      />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">
-                        {opt.label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">
-                    Ticket Tiers
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Set tier name, price in KES (0 for free), and total available seats/units.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateForm('ticketTiers', [
-                      ...form.ticketTiers,
-                      {
-                        name: '',
-                        priceKes: 0,
-                        quantityTotal: 50,
-                        isGroupSubgroup: false,
-                        groupCategory: 'FRIENDS',
-                        occupantsPerUnit: 1,
-                        pricingMode: 'PER_OCCUPANT',
-                      },
-                    ])
-                  }
-                  className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
-                >
-                  <Plus className="w-3.5 h-3.5 inline mr-1" /> Add Tier
-                </button>
-              </div>
-              {form.ticketTiers.map((tier, index) => (
-                <div
-                  key={index}
-                  className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3"
-                >
-                  <div className="flex justify-between">
-                    <span className="text-xs font-bold text-slate-500 uppercase">
-                      Tier {index + 1}
-                    </span>
-                    {form.ticketTiers.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateForm(
-                            'ticketTiers',
-                            form.ticketTiers.filter((_, i) => i !== index),
-                          )
-                        }
-                        aria-label={`Remove ticket tier ${index + 1}`}
-                        className="text-red-500"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                        Tier Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={tier.name}
-                        onChange={(e) => updateTier(index, 'name', e.target.value)}
-                        placeholder="e.g., Regular, VIP, Family of 4"
-                        className={inputCls('tierName')}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                        Price (KES) *
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={tier.priceKes}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9]/g, '');
-                          updateTier(index, 'priceKes', val ? Number(val) : 0);
-                        }}
-                        placeholder="0 for free or KES amount"
-                        className={inputCls('tierPrice')}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                        Total Quantity *
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={tier.quantityTotal}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9]/g, '');
-                          updateTier(
-                            index,
-                            'quantityTotal',
-                            val ? Number(val) : 0,
-                          );
-                        }}
-                        placeholder="Total seats or units"
-                        className={inputCls('tierQty')}
-                      />
-                    </div>
-                  </div>
-
-                  {form.allowGroupBookings && (
-                    <div className="pt-3 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 pb-2">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(tier.isGroupSubgroup)}
-                          onChange={(e) =>
-                            updateTier(index, 'isGroupSubgroup', e.target.checked)
-                          }
-                          className="w-4 h-4 accent-gold rounded"
-                        />
-                        Group Subgroup
-                      </label>
-
-                      {tier.isGroupSubgroup && (
-                        <>
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                              Group Type
-                            </label>
-                            <select
-                              value={tier.groupCategory || 'FRIENDS'}
-                              onChange={(e) =>
-                                updateTier(index, 'groupCategory', e.target.value)
-                              }
-                              className={inputCls('groupCategory')}
-                            >
-                              {GROUP_CATEGORIES.map((gc) => (
-                                <option key={gc} value={gc}>
-                                  {gc}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                              Occupants / Unit
-                            </label>
-                            <input
-                              type="number"
-                              min={1}
-                              value={tier.occupantsPerUnit ?? 1}
-                              onChange={(e) =>
-                                updateTier(
-                                  index,
-                                  'occupantsPerUnit',
-                                  Math.max(1, Number(e.target.value) || 1),
-                                )
-                              }
-                              placeholder="Guests per unit (e.g., 4)"
-                              className={inputCls('occupantsPerUnit')}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
-                              Pricing Mode
-                            </label>
-                            <select
-                              value={tier.pricingMode || 'PER_OCCUPANT'}
-                              onChange={(e) =>
-                                updateTier(
-                                  index,
-                                  'pricingMode',
-                                  e.target.value as 'PER_OCCUPANT' | 'BUNDLE_FIXED',
-                                )
-                              }
-                              className={inputCls('pricingMode')}
-                            >
-                              <option value="PER_OCCUPANT">Per Occupant</option>
-                              <option value="BUNDLE_FIXED">Fixed Bundle</option>
-                            </select>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <TicketTiersConfigurator
+            allowGroupBookings={form.allowGroupBookings}
+            isFeatured={form.isFeatured}
+            eventFeatures={form.eventFeatures}
+            ticketTiers={form.ticketTiers}
+            errors={errors}
+            inputCls={inputCls}
+            onToggleGroupBookings={handleToggleGroupBookings}
+            onAddGroupCategoryTier={addGroupCategoryTier}
+            onToggleFeatured={(checked) => updateForm('isFeatured', checked)}
+            onToggleFeature={toggleFeature}
+            onUpdateTier={updateTier}
+            onAddTier={() =>
+              updateForm('ticketTiers', [
+                ...form.ticketTiers,
+                {
+                  name: '',
+                  priceKes: 0,
+                  quantityTotal: 50,
+                  isGroupSubgroup: false,
+                  groupCategory: 'FRIENDS',
+                  occupantsPerUnit: 1,
+                  pricingMode: 'PER_OCCUPANT',
+                },
+              ])
+            }
+            onRemoveTier={(index) =>
+              updateForm(
+                'ticketTiers',
+                form.ticketTiers.filter((_, i) => i !== index),
+              )
+            }
+          />
         )}
 
-        <div className="flex justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={() => setStep((s) => Math.max(1, s - 1))}
-            disabled={step === 1}
-            className="px-5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            Back
-          </button>
-          {step < 3 ? (
-            <button
+        <div className="flex items-center justify-between gap-3 pt-6 border-t border-slate-100 dark:border-slate-800">
+          {step > 1 ? (
+            <Button
               type="button"
-              onClick={handleContinue}
-              className="px-6 py-2.5 rounded-lg bg-brand-gradient text-white text-sm font-semibold hover:opacity-95 transition-opacity"
+              variant="outline"
+              size="md"
+              onClick={() => setStep((s) => s - 1)}
+              className="rounded-xl"
             >
-              Continue
-            </button>
+              Previous
+            </Button>
           ) : (
-            <button
+            <div />
+          )}
+
+          {step < 3 ? (
+            <Button
               type="button"
-              onClick={handleSave}
+              variant="primary"
+              size="md"
+              onClick={handleContinue}
+              className="gap-2 bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none rounded-xl"
+            >
+              Continue <ArrowRight className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              isLoading={saving}
               disabled={saving}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-brand-gradient text-white text-sm font-semibold disabled:opacity-50 hover:opacity-95 transition-opacity"
+              onClick={handleSave}
+              className="gap-2 bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none rounded-xl"
             >
               <Save className="w-4 h-4" />
-              {saving ? 'Saving...' : 'Create Event'}
-            </button>
+              {saving ? 'Creating Event...' : 'Create Event'}
+            </Button>
           )}
         </div>
       </div>

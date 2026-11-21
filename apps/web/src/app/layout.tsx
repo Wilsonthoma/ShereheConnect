@@ -1,30 +1,49 @@
 import type { Metadata, Viewport } from 'next';
-import Script from 'next/script';
 import localFont from 'next/font/local';
-import { Kaushan_Script, Varela_Round } from 'next/font/google';
+import { Kaushan_Script } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/lib/theme';
 import { ToastProvider } from '@/components/providers/ToastProvider';
 import { LanguageProvider } from '@/lib/i18n/LanguageContext';
 
-// H1 headings — Kaushan Script
+// Display headings — Kaushan Script paired with Coddy Round fallback stack
 const kaushan = Kaushan_Script({
   subsets: ['latin'],
-  variable: '--font-display', // This matches the CSS!
+  variable: '--font-display',
   weight: '400',
   display: 'swap',
 });
 
-// Coddy Round — H2 to H6 & UI
+// Coddy Round — subheadings & standard body/UI text
 const coddyRound = localFont({
   src: [
-    { path: '../fonts/coddy/CoddyRound-Regular.ttf', weight: '400', style: 'normal' },
-    { path: '../fonts/coddy/CoddyRound-Medium.ttf', weight: '500', style: 'normal' },
-    { path: '../fonts/coddy/CoddyRound-SemiBold.ttf', weight: '600', style: 'normal' },
-    { path: '../fonts/coddy/CoddyRound-Bold.ttf', weight: '700', style: 'normal' },
-    { path: '../fonts/coddy/CoddyRound-ExtraBold.ttf', weight: '800', style: 'normal' },
+    {
+      path: '../fonts/coddy/CoddyRound-Regular.ttf',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../fonts/coddy/CoddyRound-Medium.ttf',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: '../fonts/coddy/CoddyRound-SemiBold.ttf',
+      weight: '600',
+      style: 'normal',
+    },
+    {
+      path: '../fonts/coddy/CoddyRound-Bold.ttf',
+      weight: '700',
+      style: 'normal',
+    },
+    {
+      path: '../fonts/coddy/CoddyRound-ExtraBold.ttf',
+      weight: '800',
+      style: 'normal',
+    },
   ],
-  variable: '--font-sans', // This matches the CSS!
+  variable: '--font-sans',
   display: 'swap',
 });
 
@@ -43,14 +62,18 @@ export const metadata: Metadata = {
   description: 'Find, book, and attend events near you.',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html
       lang="en"
       className={`${coddyRound.variable} ${kaushan.variable}`}
       suppressHydrationWarning
     >
-      <body className="antialiased min-h-screen bg-white dark:bg-[#2B2B2B] text-slate-800 dark:text-slate-100">
+      <body className="font-sans font-normal antialiased min-h-screen bg-white dark:bg-[#2B2B2B] text-slate-800 dark:text-slate-100">
         <ThemeProvider>
           <LanguageProvider>{children}</LanguageProvider>
           <ToastProvider />

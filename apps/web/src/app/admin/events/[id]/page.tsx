@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -16,10 +17,180 @@ import {
 import { adminEventsApi, EventItem } from '@/lib/eventsApi';
 import { getToken } from '@/lib/auth';
 import { toast } from '@/lib/toast';
-import { FullPageLoader, EventImage } from '@/components/ui';
+import { Button, FullPageLoader, EventImage } from '@/components/ui';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 
 type ReviewAction = 'APPROVED' | 'REJECTED' | 'REQUESTED_CHANGES';
+
+interface EventReviewEntry {
+  id: string;
+  action: ReviewAction | string;
+  notes?: string | null;
+  createdAt: string;
+  admin?: {
+    fullName?: string | null;
+  } | null;
+}
+
+interface EventReviewableItem extends EventItem {
+  reviews?: EventReviewEntry[] | null;
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (
+    typeof err === 'object' &&
+    err !== null &&
+    'message' in err &&
+    typeof (err as { message?: unknown }).message === 'string'
+  ) {
+    return (err as { message: string }).message;
+  }
+  return 'Unknown error';
+}
+
+interface EventReviewModalProps {
+  action: ReviewAction;
+  notes: string;
+  submitting: boolean;
+  onNotesChange: (value: string) => void;
+  onClose: () => void;
+  onConfirm: (action: ReviewAction, feedback: string) => void;
+}
+
+function EventReviewModalImpl({
+  action,
+  notes,
+  submitting,
+  onNotesChange,
+  onClose,
+  onConfirm,
+}: EventReviewModalProps) {
+  const isApprove = action === 'APPROVED';
+  const isChanges = action === 'REQUESTED_CHANGES';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={() => !submitting && onClose()}
+      />
+      <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-2">
+          {isApprove
+            ? 'Approve Event?'
+            : isChanges
+              ? 'Request Changes'
+              : 'Reject Event?'}
+        </h3>
+        <p className="text-sm text-slate-500 mb-4">
+          {isApprove
+            ? 'This event will go live and be visible to attendees.'
+            : 'The organizer will receive your feedback.'}
+        </p>
+
+        {!isApprove && (
+          <textarea
+            value={notes}
+            onChange={(e) => onNotesChange(e.target.value)}
+            placeholder={
+              isChanges
+                ? 'Describe what needs to change...'
+                : 'Explain why the event is rejected...'
+            }
+            rows={4}
+            className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-gold text-sm mb-4 resize-none"
+          />
+        )}
+
+        <div className="flex gap-2 justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2 rounded-lg border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            isLoading={submitting}
+            onClick={() => onConfirm(action, notes)}
+            disabled={submitting || (!isApprove && !notes.trim())}
+            className={`gap-2 px-4 py-2 rounded-lg text-white border-none text-sm font-semibold ${
+              isApprove
+                ? 'bg-emerald-500 hover:bg-emerald-600'
+                : isChanges
+                  ? 'bg-amber-500 hover:bg-amber-600'
+                  : 'bg-red-500 hover:bg-red-600'
+            }`}
+          >
+            {!submitting &&
+              (isApprove ? (
+                <Check className="w-4 h-4" />
+              ) : isChanges ? (
+                <AlertTriangle className="w-4 h-4" />
+              ) : (
+                <X className="w-4 h-4" />
+              ))}
+            Confirm
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const EventReviewModal = dynamic(() => Promise.resolve(EventReviewModalImpl), {
+  ssr: false,
+});
+
+interface EventCoverPreviewModalProps {
+  imageUrl: string;
+  title: string;
+  onClose: () => void;
+}
+
+function EventCoverPreviewModalImpl({
+  imageUrl,
+  title,
+  onClose,
+}: EventCoverPreviewModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative max-w-5xl w-full max-h-[90vh] flex items-center justify-center">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          aria-label="Close image preview"
+          className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/50 text-white hover:bg-black/80"
+        >
+          <X className="w-6 h-6" />
+        </Button>
+        <img
+          src={imageUrl}
+          alt={title}
+          className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+        />
+      </div>
+    </div>
+  );
+}
+
+const EventCoverPreviewModal = dynamic(
+  () => Promise.resolve(EventCoverPreviewModalImpl),
+  { ssr: false },
+);
 
 export default function AdminEventReviewPage() {
   const params = useParams();
@@ -27,7 +198,7 @@ export default function AdminEventReviewPage() {
   const id = params?.id as string;
   const { language } = useLanguage();
 
-  const [event, setEvent] = useState<EventItem | null>(null);
+  const [event, setEvent] = useState<EventReviewableItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<ReviewAction | null>(null);
   const [notes, setNotes] = useState('');
@@ -36,12 +207,15 @@ export default function AdminEventReviewPage() {
 
   useEffect(() => {
     const token = getToken();
-    if (!token || !id) return;
+    if (!token || !id) {
+      setLoading(false);
+      return;
+    }
     adminEventsApi
       .get(token, id)
-      .then(setEvent)
-      .catch((err: any) =>
-        toast.error('Failed to load event', err?.message ?? 'Unknown error'),
+      .then((data) => setEvent(data as EventReviewableItem))
+      .catch((err: unknown) =>
+        toast.error('Failed to load event', getErrorMessage(err)),
       )
       .finally(() => setLoading(false));
   }, [id]);
@@ -62,13 +236,13 @@ export default function AdminEventReviewPage() {
           action === 'APPROVED'
             ? 'approved'
             : action === 'REJECTED'
-            ? 'rejected'
-            : 'sent back for changes'
+              ? 'rejected'
+              : 'sent back for changes'
         }!`,
       );
       router.push('/admin/events');
-    } catch (err: any) {
-      toast.error('Review failed', err?.message ?? 'Unknown error');
+    } catch (err: unknown) {
+      toast.error('Review failed', getErrorMessage(err));
     } finally {
       setSubmitting(false);
       setModal(null);
@@ -82,7 +256,10 @@ export default function AdminEventReviewPage() {
     return (
       <div className="text-center py-12">
         <p className="text-slate-500">Event not found</p>
-        <Link href="/admin/events" className="text-gold hover:underline mt-4 inline-block">
+        <Link
+          href="/admin/events"
+          className="text-gold hover:underline mt-4 inline-block"
+        >
           Back to events
         </Link>
       </div>
@@ -92,28 +269,36 @@ export default function AdminEventReviewPage() {
   const startDate = new Date(event.startsAt);
   const endDate = new Date(event.endsAt);
   const locale = language === 'sw' ? 'sw-KE' : 'en-KE';
-  // Allow review for PENDING_APPROVAL or CANCELLED (to override)
-  const canReview = event.status === 'PENDING_APPROVAL' || event.status === 'CANCELLED';
+  const canReview =
+    event.status === 'PENDING_APPROVAL' || event.status === 'CANCELLED';
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-20">
-      <button
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
         onClick={() => router.push('/admin/events')}
-        className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-gold transition-colors"
+        className="gap-2 px-0 text-sm text-slate-500 hover:text-gold"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to Events
-      </button>
+      </Button>
 
       {/* Header */}
       <div>
         <div className="flex items-center gap-3 mb-2">
-          <span className={`inline-block px-2.5 py-1 rounded text-[0.65rem] font-bold uppercase tracking-wide ${
-            event.status === 'PENDING_APPROVAL' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' :
-            event.status === 'LIVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' :
-            event.status === 'CANCELLED' ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300' :
-            'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-          }`}>
+          <span
+            className={`inline-block px-2.5 py-1 rounded text-[0.65rem] font-bold uppercase tracking-wide ${
+              event.status === 'PENDING_APPROVAL'
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
+                : event.status === 'LIVE'
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                  : event.status === 'CANCELLED'
+                    ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
+                    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+            }`}
+          >
             {event.status.replace(/_/g, ' ')}
           </span>
           {event.submittedAt && (
@@ -133,9 +318,17 @@ export default function AdminEventReviewPage() {
 
       {/* Compact Image Layout (Clickable) */}
       <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6">
-        <div 
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setShowImage(true)}
-          className="group relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 h-[180px] cursor-pointer"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setShowImage(true);
+            }
+          }}
+          className="group relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 h-[180px] cursor-pointer focus:outline-none focus:ring-2 focus:ring-gold"
         >
           <EventImage
             src={event.coverImageUrl}
@@ -147,20 +340,32 @@ export default function AdminEventReviewPage() {
             <Maximize2 className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
         </div>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col justify-center">
             <h3 className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
               <Calendar className="w-4 h-4" /> When
             </h3>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {startDate.toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' })}
+              {startDate.toLocaleDateString(locale, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+              })}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              {startDate.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })} – {endDate.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+              {startDate.toLocaleTimeString(locale, {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}{' '}
+              –{' '}
+              {endDate.toLocaleTimeString(locale, {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
             </p>
           </div>
-          
+
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col justify-center">
             <h3 className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
               <MapPin className="w-4 h-4" /> Where
@@ -193,13 +398,22 @@ export default function AdminEventReviewPage() {
         {event.ticketTiers && event.ticketTiers.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {event.ticketTiers.map((tier) => (
-              <div key={tier.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                <span className="font-semibold text-sm text-slate-700 dark:text-slate-200">{tier.name}</span>
+              <div
+                key={tier.id}
+                className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"
+              >
+                <span className="font-semibold text-sm text-slate-700 dark:text-slate-200">
+                  {tier.name}
+                </span>
                 <div className="text-right">
                   <p className="font-bold text-sm text-gold">
-                    {tier.priceKes === 0 ? 'Free' : `KES ${tier.priceKes.toLocaleString()}`}
+                    {tier.priceKes === 0
+                      ? 'Free'
+                      : `KES ${tier.priceKes.toLocaleString()}`}
                   </p>
-                  <p className="text-[0.65rem] text-slate-500">{tier.quantityTotal} capacity</p>
+                  <p className="text-[0.65rem] text-slate-500">
+                    {tier.quantityTotal} capacity
+                  </p>
                 </div>
               </div>
             ))}
@@ -216,8 +430,11 @@ export default function AdminEventReviewPage() {
             Prior Reviews
           </h3>
           <div className="space-y-3">
-            {event.reviews.map((review: any) => (
-              <div key={review.id} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 text-sm">
+            {event.reviews.map((review) => (
+              <div
+                key={review.id}
+                className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 text-sm"
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-bold text-slate-800 dark:text-slate-100">
                     {review.admin?.fullName || 'Admin'}
@@ -244,122 +461,62 @@ export default function AdminEventReviewPage() {
       {canReview && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 sticky bottom-4 shadow-xl z-10 flex flex-col md:flex-row items-center justify-between gap-4">
           <div>
-            <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Review Decision</h3>
-            <p className="text-xs text-slate-500">Approve, reject, or request changes.</p>
+            <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+              Review Decision
+            </h3>
+            <p className="text-xs text-slate-500">
+              Approve, reject, or request changes.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            <button
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setModal('APPROVED')}
-              className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-sm font-bold hover:bg-emerald-500 hover:text-white transition-colors"
+              className="flex-1 md:flex-none gap-1.5 px-4 py-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-sm font-bold hover:bg-emerald-500 hover:text-white hover:border-emerald-500"
             >
               <Check className="w-4 h-4" /> Approve
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setModal('REQUESTED_CHANGES')}
-              className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-bold hover:bg-amber-500 hover:text-white transition-colors"
+              className="flex-1 md:flex-none gap-1.5 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-sm font-bold hover:bg-amber-500 hover:text-white hover:border-amber-500"
             >
               <AlertTriangle className="w-4 h-4" /> Request Changes
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setModal('REJECTED')}
-              className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-bold hover:bg-red-500 hover:text-white transition-colors"
+              className="flex-1 md:flex-none gap-1.5 px-4 py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 text-sm font-bold hover:bg-red-500 hover:text-white hover:border-red-500"
             >
               <X className="w-4 h-4" /> Reject
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Review Modal */}
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => !submitting && setModal(null)}
-          />
-          <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-2">
-              {modal === 'APPROVED'
-                ? 'Approve Event?'
-                : modal === 'REQUESTED_CHANGES'
-                ? 'Request Changes'
-                : 'Reject Event?'}
-            </h3>
-            <p className="text-sm text-slate-500 mb-4">
-              {modal === 'APPROVED'
-                ? 'This event will go live and be visible to attendees.'
-                : 'The organizer will receive your feedback.'}
-            </p>
-
-            {modal !== 'APPROVED' && (
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder={
-                  modal === 'REQUESTED_CHANGES'
-                    ? 'Describe what needs to change...'
-                    : 'Explain why the event is rejected...'
-                }
-                rows={4}
-                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-gold text-sm mb-4 resize-none"
-              />
-            )}
-
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setModal(null)}
-                disabled={submitting}
-                className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleReview(modal, notes)}
-                disabled={
-                  submitting || (modal !== 'APPROVED' && !notes.trim())
-                }
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50 transition-colors ${
-                  modal === 'APPROVED'
-                    ? 'bg-emerald-500 hover:bg-emerald-600'
-                    : modal === 'REQUESTED_CHANGES'
-                    ? 'bg-amber-500 hover:bg-amber-600'
-                    : 'bg-red-500 hover:bg-red-600'
-                }`}
-              >
-                {submitting ? (
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : modal === 'APPROVED' ? (
-                  <Check className="w-4 h-4" />
-                ) : modal === 'REQUESTED_CHANGES' ? (
-                  <AlertTriangle className="w-4 h-4" />
-                ) : (
-                  <X className="w-4 h-4" />
-                )}
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
+        <EventReviewModal
+          action={modal}
+          notes={notes}
+          submitting={submitting}
+          onNotesChange={setNotes}
+          onClose={() => setModal(null)}
+          onConfirm={handleReview}
+        />
       )}
 
-      {/* Image Preview Modal */}
       {showImage && event.coverImageUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowImage(false)} />
-          <div className="relative max-w-5xl w-full max-h-[90vh] flex items-center justify-center">
-            <button 
-              onClick={() => setShowImage(false)}
-              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/50 text-white hover:bg-black/80 transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <img 
-              src={event.coverImageUrl} 
-              alt={event.title} 
-              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" 
-            />
-          </div>
-        </div>
+        <EventCoverPreviewModal
+          imageUrl={event.coverImageUrl}
+          title={event.title}
+          onClose={() => setShowImage(false)}
+        />
       )}
     </div>
   );

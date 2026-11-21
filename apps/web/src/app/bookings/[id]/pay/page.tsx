@@ -1,10 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { Button } from '@/components/ui';
 import { bookingsApi, type BookingRecord } from '@/lib/bookingsApi';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
+import { CheckCircle2, Loader2, ShieldCheck } from 'lucide-react';
+import { toast } from '@/lib/toast';
 
 type NormalizedPaymentMethodType = 'PAYBILL' | 'TILL' | 'PHONE';
 
@@ -16,8 +20,11 @@ interface OrganizerPaymentMethodInfo {
   displayLabel?: string | null;
 }
 
-interface BookingWithPayment extends BookingRecord {
-  event?: {
+interface BookingWithPayment extends Omit<BookingRecord, 'event'> {
+  user?: {
+    phone?: string | null;
+  } | null;
+  event?: Partial<BookingRecord['event']> & {
     id?: string;
     title?: string;
     slug?: string;
@@ -29,19 +36,19 @@ interface BookingWithPayment extends BookingRecord {
       paymentMethod?: OrganizerPaymentMethodInfo | null;
       paymentMethods?: OrganizerPaymentMethodInfo[] | null;
     } | null;
-  } | null;
+  };
 }
 
-const MAX_HOLD_MS = 15 * 60 * 1000;
+const MAX_HOLD_MS = 5 * 60 * 1000; // 5-minute reservation hold
 const POLL_INTERVAL_MS = 3000;
 
 function normalizeMethodType(raw?: string | null): NormalizedPaymentMethodType {
-  const upper = (raw || '').toUpperCase().trim();
-  if (upper.includes('TILL') || upper.includes('BUY_GOODS')) {
-    return 'TILL';
-  }
+  const upper = (raw || '').toUpperCase().trim().replace(/[\s-]+/g, '_');
+  if (upper.includes('TILL') || upper.includes('BUY_GOODS')) return 'TILL';
   if (
     upper.includes('PHONE') ||
+    upper.includes('POCHI') ||
+    upper.includes('SEND_MONEY') ||
     upper.includes('STK') ||
     upper.includes('MOBILE') ||
     upper.includes('P2P')
@@ -51,23 +58,16 @@ function normalizeMethodType(raw?: string | null): NormalizedPaymentMethodType {
   return 'PAYBILL';
 }
 
-function extractPaymentMethod(
-  booking: BookingWithPayment | null,
-): {
-  type: NormalizedPaymentMethodType;
-  numberOrCode: string;
-  displayLabel: string | null;
-  useBookingRefAsAccount: boolean;
-} {
+function extractPaymentMethod(booking: BookingWithPayment | null) {
   const org = booking?.event?.organizer;
-  const activeMethod: OrganizerPaymentMethodInfo | undefined =
+  const activeMethod =
     org?.paymentMethod ??
     (Array.isArray(org?.paymentMethods)
       ? org.paymentMethods.find((m) => Boolean(m))
       : undefined);
 
   const type = normalizeMethodType(activeMethod?.methodType);
-  const envPaybill = process.env.NEXT_PUBLIC_MPESA_PAYBILL?.trim() || '522522';
+  const envPaybill = process.env.NEXT_PUBLIC_MPESA_PAYBILL?.trim() || '400200';
   const envTill = process.env.NEXT_PUBLIC_MPESA_TILL?.trim() || '';
   const envPhone = process.env.NEXT_PUBLIC_MPESA_PHONE?.trim() || '';
 
@@ -79,8 +79,8 @@ function extractPaymentMethod(
         activeMethod?.accountNumber?.trim() ||
         envTill ||
         envPaybill,
+      accountNumber: null,
       displayLabel: activeMethod?.displayLabel?.trim() || null,
-      useBookingRefAsAccount: false,
     };
   }
 
@@ -92,20 +92,47 @@ function extractPaymentMethod(
         activeMethod?.shortcode?.trim() ||
         envPhone ||
         envPaybill,
+      accountNumber: null,
       displayLabel: activeMethod?.displayLabel?.trim() || null,
-      useBookingRefAsAccount: false,
     };
   }
 
   return {
-    type: 'PAYBILL',
+    type: 'PAYBILL' as const,
     numberOrCode:
       activeMethod?.shortcode?.trim() ||
       activeMethod?.phoneNumber?.trim() ||
       envPaybill,
+    accountNumber:
+      activeMethod?.accountNumber?.trim() ||
+      booking?.user?.phone?.trim() ||
+      booking?.attendee?.phone?.trim() ||
+      booking?.bookingReference ||
+      '',
     displayLabel: activeMethod?.displayLabel?.trim() || null,
-    useBookingRefAsAccount: true,
   };
+}
+
+function getSafaricomSteps(type: NormalizedPaymentMethodType): string[] {
+  if (type === 'TILL') {
+    return [
+      'Dial *334# or open the M-Pesa app.',
+      'Select Lipa na M-Pesa -> Buy Goods and Services.',
+      'Enter the Till Number and exact KES Amount, then enter your M-Pesa PIN.',
+    ];
+  }
+  if (type === 'PHONE') {
+    return [
+      'Dial *334# or open the M-Pesa app.',
+      'Select Send Money (or Pochi la Biashara if indicated by the label).',
+      'Enter the Phone Number and exact KES Amount, then enter your M-Pesa PIN.',
+    ];
+  }
+  return [
+    'Dial *334# or open the M-Pesa app.',
+    'Select Lipa na M-Pesa -> Pay Bill.',
+    'Enter the Paybill Business Number, Account Number, and exact KES Amount, then enter your M-Pesa PIN.',
+  ];
 }
 
 function formatCountdown(remainingMs: number): string {
@@ -115,6 +142,77 @@ function formatCountdown(remainingMs: number): string {
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
+
+interface SmsVerificationCardProps {
+  smsText: string;
+  verifying: boolean;
+  errorMsg: string | null;
+  onSmsChange: (value: string) => void;
+  onSubmit: (e: React.FormEvent) => void;
+}
+
+function MpesaSmsVerificationCardImpl({
+  smsText,
+  verifying,
+  errorMsg,
+  onSmsChange,
+  onSubmit,
+}: SmsVerificationCardProps) {
+  return (
+    <div className="bg-white dark:bg-[#3A3A3A] border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4">
+      <div>
+        <h3 className="font-bold text-slate-900 dark:text-white">
+          Paste M-Pesa Confirmation SMS
+        </h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          After paying on your phone, copy the M-Pesa confirmation message and
+          paste it below to extract and verify your payment.
+        </p>
+      </div>
+
+      <form onSubmit={onSubmit} className="space-y-4">
+        <textarea
+          rows={3}
+          value={smsText}
+          onChange={(e) => onSmsChange(e.target.value)}
+          placeholder="Paste your M-Pesa confirmation SMS here..."
+          className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#2B2B2B] p-3 text-sm text-slate-900 dark:text-white focus:border-[#29ABE2] focus:outline-none resize-none"
+          required
+        />
+
+        {errorMsg && (
+          <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-lg text-sm text-red-600 dark:text-red-400">
+            {errorMsg}
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          isLoading={verifying}
+          disabled={verifying || !smsText.trim()}
+          className="w-full gap-2 py-3 bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none font-bold rounded-xl"
+        >
+          {!verifying && <ShieldCheck className="w-5 h-5" />}
+          {verifying
+            ? 'Verifying Message...'
+            : 'Verify Payment & Proceed to Tickets'}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+const MpesaSmsVerificationCard = dynamic(
+  () => Promise.resolve(MpesaSmsVerificationCardImpl),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="bg-white dark:bg-[#3A3A3A] border border-slate-200 dark:border-slate-700 rounded-2xl p-5 h-48 animate-pulse" />
+    ),
+  },
+);
 
 export default function BookingPaymentPage() {
   const params = useParams<{ id: string }>();
@@ -128,17 +226,22 @@ export default function BookingPaymentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [checkingNow, setCheckingNow] = useState(false);
 
+  const [smsText, setSmsText] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(
+    'Transaction & booking complete — proceed to your tickets page.',
+  );
+
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimeoutRef = useRef<number | null>(null);
-  const inFlightRef = useRef(false);
 
   const numberFormatter = useMemo(
     () => new Intl.NumberFormat(localeTag),
     [localeTag],
   );
-
   const formatKes = useCallback(
     (amount: number) => `KES ${numberFormatter.format(Math.max(0, amount))}`,
     [numberFormatter],
@@ -163,15 +266,13 @@ export default function BookingPaymentPage() {
         setCopiedField((prev) => (prev === key ? null : prev));
       }, 2000);
     } catch {
-      // Clipboard fallback ignored if blocked by browser context
+      // Clipboard access denied or unavailable
     }
   }, []);
 
   const fetchLatestBooking = useCallback(
     async (silent = false) => {
-      if (!bookingId || inFlightRef.current) return null;
-      inFlightRef.current = true;
-      if (!silent) setCheckingNow(true);
+      if (!bookingId) return null;
       try {
         const latest = (await bookingsApi.getBookingById(
           bookingId,
@@ -183,9 +284,7 @@ export default function BookingPaymentPage() {
         const msg =
           err instanceof Error
             ? err.message
-            : isSw
-              ? 'Imeshindwa kupakia maelezo ya malipo.'
-              : 'Failed to load booking payment details.';
+            : 'Failed to load booking payment details.';
         if (
           msg.toLowerCase().includes('unauthorized') ||
           msg.toLowerCase().includes('401')
@@ -195,16 +294,11 @@ export default function BookingPaymentPage() {
           );
           return null;
         }
-        if (!silent) {
-          setError(msg);
-        }
+        if (!silent) setError(msg);
         return null;
-      } finally {
-        inFlightRef.current = false;
-        if (!silent) setCheckingNow(false);
       }
     },
-    [bookingId, isSw, router],
+    [bookingId, router],
   );
 
   useEffect(() => {
@@ -219,9 +313,7 @@ export default function BookingPaymentPage() {
   }, [fetchLatestBooking]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -232,12 +324,9 @@ export default function BookingPaymentPage() {
     const maxCapMs = Number.isNaN(createdMs)
       ? Date.now() + MAX_HOLD_MS
       : createdMs + MAX_HOLD_MS;
-
     if (booking?.expiresAt) {
       const expMs = new Date(booking.expiresAt).getTime();
-      if (!Number.isNaN(expMs)) {
-        return Math.min(expMs, maxCapMs);
-      }
+      if (!Number.isNaN(expMs)) return Math.min(expMs, maxCapMs);
     }
     return maxCapMs;
   }, [booking?.createdAt, booking?.expiresAt]);
@@ -248,17 +337,17 @@ export default function BookingPaymentPage() {
     booking?.status === 'CANCELLED' ||
     (booking?.status === 'PENDING' && remainingMs <= 0);
 
+  // Poll when tab is visible; pause when hidden; redirect to /tickets on confirmation
   useEffect(() => {
-    if (!booking) return;
-
+    if (!booking || success) return;
     if (booking.status === 'CONFIRMED') {
-      router.replace('/tickets');
-      return;
+      setSuccess(true);
+      const timer = window.setTimeout(() => {
+        router.replace(`/tickets?bookingId=${encodeURIComponent(bookingId)}`);
+      }, 1500);
+      return () => window.clearTimeout(timer);
     }
-
-    if (isHoldExpired) {
-      return;
-    }
+    if (isHoldExpired) return;
 
     let intervalId: number | null = null;
 
@@ -266,14 +355,21 @@ export default function BookingPaymentPage() {
       if (document.visibilityState === 'hidden') return;
       const updated = await fetchLatestBooking(true);
       if (updated?.status === 'CONFIRMED') {
-        if (intervalId !== null) window.clearInterval(intervalId);
-        router.replace('/tickets');
+        if (intervalId !== null) {
+          window.clearInterval(intervalId);
+          intervalId = null;
+        }
+        setSuccess(true);
+        window.setTimeout(() => {
+          router.replace(`/tickets?bookingId=${encodeURIComponent(bookingId)}`);
+        }, 1500);
       }
     };
 
     const startPolling = () => {
-      if (intervalId !== null) return;
-      intervalId = window.setInterval(pollOnce, POLL_INTERVAL_MS);
+      if (intervalId === null) {
+        intervalId = window.setInterval(pollOnce, POLL_INTERVAL_MS);
+      }
     };
 
     const stopPolling = () => {
@@ -285,7 +381,6 @@ export default function BookingPaymentPage() {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        setNowMs(Date.now());
         void pollOnce();
         startPolling();
       } else {
@@ -296,25 +391,61 @@ export default function BookingPaymentPage() {
     if (document.visibilityState === 'visible') {
       startPolling();
     }
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       stopPolling();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [booking, isHoldExpired, fetchLatestBooking, router]);
+  }, [booking, bookingId, isHoldExpired, fetchLatestBooking, router, success]);
+
+  const handleVerifySms = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!smsText.trim() || isHoldExpired) return;
+    setVerifying(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await bookingsApi.verifyMpesaSms(bookingId, smsText);
+      const nextMsg =
+        res.message ||
+        'Transaction & booking complete — proceed to your tickets page.';
+      setSuccessMessage(nextMsg);
+      setSuccess(true);
+      toast.success('Transaction & booking complete', nextMsg);
+      window.setTimeout(() => {
+        router.push(
+          res.redirectTo || `/tickets?bookingId=${encodeURIComponent(bookingId)}`,
+        );
+      }, 1500);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to verify M-Pesa message. Please check the text and try again.';
+      setErrorMsg(message);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleSmsChange = useCallback((value: string) => {
+    setSmsText(value);
+    setErrorMsg((prev) => (prev ? null : prev));
+  }, []);
 
   const paymentInfo = useMemo(() => extractPaymentMethod(booking), [booking]);
+  const safaricomSteps = useMemo(
+    () => getSafaricomSteps(paymentInfo.type),
+    [paymentInfo.type],
+  );
 
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] py-10 transition-colors">
         <div className="container-fluid max-w-2xl">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {isSw
-              ? 'Inapakia ukurasa wa malipo...'
-              : 'Loading payment instructions...'}
+            Loading payment instructions...
           </p>
         </div>
       </main>
@@ -326,24 +457,41 @@ export default function BookingPaymentPage() {
       <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] py-10 space-y-4 transition-colors">
         <div className="container-fluid max-w-2xl space-y-4">
           <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
-            {error ||
-              (isSw ? 'Uhifadhi haujapatikana.' : 'Booking not found.')}
+            {error || 'Booking not found.'}
           </div>
           <Link
             href="/events"
             className="inline-block text-sm font-semibold text-[#29ABE2] hover:text-[#1A8CC4]"
           >
-            {isSw ? 'Rudi kwenye matukio' : 'Back to events'}
+            Back to events
           </Link>
         </div>
       </main>
     );
   }
 
-  const eventSlug = booking.event?.slug || '';
-  const backToEventHref = eventSlug
-    ? `/events/${encodeURIComponent(eventSlug)}`
+  const backToEventHref = booking.event?.slug
+    ? `/events/${encodeURIComponent(booking.event.slug)}`
     : '/events';
+
+  if (success) {
+    return (
+      <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] py-12 px-4 transition-colors flex justify-center items-center">
+        <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-8 text-center space-y-4 max-w-md w-full">
+          <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/50 rounded-full flex items-center justify-center mx-auto">
+            <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <h2 className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
+            Transaction &amp; Booking Complete
+          </h2>
+          <p className="text-sm text-emerald-700 dark:text-emerald-300">
+            {successMessage}
+          </p>
+          <Loader2 className="w-6 h-6 animate-spin mx-auto text-emerald-600" />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] py-8 transition-colors">
@@ -351,21 +499,20 @@ export default function BookingPaymentPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-[#1A8CC4] dark:text-[#29ABE2]">
-              {isSw ? 'Hatua ya Malipo' : 'Complete Ticket Payment'}
+              Complete Ticket Payment
             </p>
             <h1
               style={{ fontFamily: "'Kaushan Script', cursive" }}
               className="text-3xl text-slate-900 dark:text-white"
             >
-              {booking.event?.title ||
-                (isSw ? 'Malipo ya Tiketi' : 'Event Ticket Payment')}
+              {booking.event?.title || 'Event Ticket Payment'}
             </h1>
           </div>
           <Link
             href={backToEventHref}
             className="text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-[#29ABE2]"
           >
-            {isSw ? '← Rudi kwenye tukio' : '← Back to event'}
+            ← Back to event
           </Link>
         </div>
 
@@ -373,45 +520,20 @@ export default function BookingPaymentPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 pb-3.5">
             <div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isSw
-                  ? 'Nambari ya Kumbukumbu (Unique Code)'
-                  : 'Unique Booking Reference'}
+                Reservation Status
               </p>
-              <div className="mt-1 flex items-center gap-2">
-                <span className="font-mono text-base font-bold text-[#1A8CC4] dark:text-[#29ABE2]">
-                  {booking.bookingReference}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => copyValue('ref', booking.bookingReference)}
-                  className="rounded-md border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[#29ABE2]"
-                >
-                  {copiedField === 'ref'
-                    ? isSw
-                      ? 'Imenakiliwa'
-                      : 'Copied'
-                    : isSw
-                      ? 'Nakili'
-                      : 'Copy'}
-                </button>
-              </div>
+              <span className="mt-1 inline-block rounded-full bg-slate-100 dark:bg-[#2B2B2B] px-3 py-1 text-xs font-semibold text-slate-800 dark:text-slate-100">
+                {booking.status}
+              </span>
             </div>
 
             <div className="text-right">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isHoldExpired
-                  ? isSw
-                    ? 'Hali ya Nafasi'
-                    : 'Hold Status'
-                  : isSw
-                    ? 'Muda Uliobaki (Max 15 min)'
-                    : 'Hold Countdown (Max 15 min)'}
+                Hold Countdown (5 min limit)
               </p>
               {isHoldExpired ? (
                 <span className="mt-1 inline-block rounded-full bg-red-500/15 px-3 py-1 text-xs font-bold text-red-600 dark:text-red-400">
-                  {isSw
-                    ? 'Muda Umeisha • Nafasi Imeachiliwa'
-                    : 'Expired • Hold Released'}
+                  Expired • Hold Released
                 </span>
               ) : (
                 <span className="mt-1 inline-block font-mono text-lg font-bold text-amber-600 dark:text-amber-400">
@@ -424,7 +546,7 @@ export default function BookingPaymentPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
             <div className="rounded-xl bg-slate-50 dark:bg-[#2B2B2B] p-3">
               <span className="text-slate-500 dark:text-slate-400 block">
-                {isSw ? 'Kifurushi' : 'Tier'}
+                Tier
               </span>
               <span className="font-semibold text-slate-900 dark:text-white">
                 {booking.ticketTier.name}
@@ -432,7 +554,7 @@ export default function BookingPaymentPage() {
             </div>
             <div className="rounded-xl bg-slate-50 dark:bg-[#2B2B2B] p-3">
               <span className="text-slate-500 dark:text-slate-400 block">
-                {isSw ? 'Idadi' : 'Quantity'}
+                Quantity
               </span>
               <span className="font-semibold text-slate-900 dark:text-white">
                 {booking.quantity}
@@ -440,7 +562,7 @@ export default function BookingPaymentPage() {
             </div>
             <div className="rounded-xl bg-slate-50 dark:bg-[#2B2B2B] p-3 col-span-2 sm:col-span-1">
               <span className="text-slate-500 dark:text-slate-400 block">
-                {isSw ? 'Kiasi cha Kulipa' : 'Total Amount'}
+                Total Amount
               </span>
               <span className="font-bold text-sm text-slate-900 dark:text-white">
                 {formatKes(booking.totalAmountKes)}
@@ -451,39 +573,25 @@ export default function BookingPaymentPage() {
           {isHoldExpired ? (
             <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 space-y-3 text-xs text-red-700 dark:text-red-300">
               <p className="font-semibold text-sm">
-                {isSw
-                  ? 'Muda wa kushikilia tiketi umekwisha na nafasi zimeachiliwa.'
-                  : 'Your reservation hold expired and the held ticket capacity has been released.'}
+                Your 5-minute reservation expired and the held ticket capacity
+                has been released.
               </p>
-              <p>
-                {isSw
-                  ? 'Malipo hayakukamilika ndani ya muda uliowekwa. Unaweza kurudi kwenye ukurasa wa tukio na kuhifadhi tena kama nafasi zipo.'
-                  : 'Payment was not completed before the hold timer expired. Return to the event page to place a new reservation if availability remains.'}
-              </p>
-              <Link
-                href={backToEventHref}
-                className="btn-coddy inline-flex items-center justify-center px-4 py-2 text-xs"
-              >
-                {isSw ? 'Hifadhi Tena' : 'Reserve Again'}
+              <Link href={backToEventHref} className="inline-block">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none rounded-full px-5 py-2 text-xs"
+                >
+                  Reserve Again
+                </Button>
               </Link>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="rounded-xl border border-[#29ABE2]/40 bg-[#E0F2FE]/50 dark:bg-[#2B2B2B] p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {paymentInfo.type === 'PAYBILL' &&
-                      (isSw
-                        ? 'Maagizo ya Malipo: Paybill'
-                        : 'Payment Instructions: Paybill')}
-                    {paymentInfo.type === 'TILL' &&
-                      (isSw
-                        ? 'Maagizo ya Malipo: Till Number (Buy Goods)'
-                        : 'Payment Instructions: Till Number (Buy Goods)')}
-                    {paymentInfo.type === 'PHONE' &&
-                      (isSw
-                        ? 'Maagizo ya Malipo: Nambari ya Simu'
-                        : 'Payment Instructions: Phone / Mobile Money')}
+                    Pay via {paymentInfo.type}
                   </h2>
                   {paymentInfo.displayLabel && (
                     <span className="rounded-full bg-[#29ABE2]/15 px-2.5 py-0.5 text-[11px] font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
@@ -496,192 +604,88 @@ export default function BookingPaymentPage() {
                   <div className="flex items-center justify-between rounded-lg bg-white dark:bg-[#3A3A3A] px-3 py-2 border border-slate-200 dark:border-slate-700">
                     <div>
                       <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                        {paymentInfo.type === 'PAYBILL' &&
-                          (isSw
-                            ? 'Business / Paybill Number'
-                            : 'Paybill Business Number')}
-                        {paymentInfo.type === 'TILL' &&
-                          (isSw ? 'Till Number' : 'Till Number')}
-                        {paymentInfo.type === 'PHONE' &&
-                          (isSw
-                            ? 'Recipient Phone Number'
-                            : 'Recipient Phone Number')}
+                        {paymentInfo.type === 'PAYBILL'
+                          ? 'Paybill Business Number'
+                          : paymentInfo.type === 'TILL'
+                            ? 'Till Number'
+                            : 'Phone Number'}
                       </span>
                       <span className="font-mono text-sm font-bold text-slate-900 dark:text-white">
                         {paymentInfo.numberOrCode}
                       </span>
                     </div>
-                    <button
+                    <Button
                       type="button"
-                      onClick={() =>
-                        copyValue('target', paymentInfo.numberOrCode)
-                      }
-                      className="rounded-md border border-slate-300 dark:border-slate-600 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[#29ABE2]"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyValue('target', paymentInfo.numberOrCode)}
+                      className="rounded-md px-2.5 py-1 h-auto text-[11px] font-semibold"
                     >
-                      {copiedField === 'target'
-                        ? isSw
-                          ? 'Imenakiliwa'
-                          : 'Copied'
-                        : isSw
-                          ? 'Nakili'
-                          : 'Copy'}
-                    </button>
+                      {copiedField === 'target' ? 'Copied' : 'Copy'}
+                    </Button>
                   </div>
 
-                  {paymentInfo.type === 'PAYBILL' && (
+                  {paymentInfo.type === 'PAYBILL' && paymentInfo.accountNumber && (
                     <div className="flex items-center justify-between rounded-lg bg-white dark:bg-[#3A3A3A] px-3 py-2 border border-slate-200 dark:border-slate-700">
                       <div>
                         <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                          {isSw
-                            ? 'Account Number (Tumia Nambari Hii)'
-                            : 'Account Number (Enter Exact Code)'}
+                          Account Number
                         </span>
                         <span className="font-mono text-sm font-bold text-[#1A8CC4] dark:text-[#29ABE2]">
-                          {booking.bookingReference}
+                          {paymentInfo.accountNumber}
                         </span>
                       </div>
-                      <button
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() =>
-                          copyValue('account', booking.bookingReference)
+                          copyValue('account', paymentInfo.accountNumber || '')
                         }
-                        className="rounded-md border border-slate-300 dark:border-slate-600 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[#29ABE2]"
+                        className="rounded-md px-2.5 py-1 h-auto text-[11px] font-semibold"
                       >
-                        {copiedField === 'account'
-                          ? isSw
-                            ? 'Imenakiliwa'
-                            : 'Copied'
-                          : isSw
-                            ? 'Nakili'
-                            : 'Copy'}
-                      </button>
+                        {copiedField === 'account' ? 'Copied' : 'Copy'}
+                      </Button>
                     </div>
                   )}
 
                   <div className="flex items-center justify-between rounded-lg bg-white dark:bg-[#3A3A3A] px-3 py-2 border border-slate-200 dark:border-slate-700">
                     <div>
                       <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                        {isSw ? 'Kiasi (KES)' : 'Amount (KES)'}
+                        Amount (KES)
                       </span>
                       <span className="text-sm font-bold text-slate-900 dark:text-white">
                         {booking.totalAmountKes}
                       </span>
                     </div>
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() =>
                         copyValue('amount', String(booking.totalAmountKes))
                       }
-                      className="rounded-md border border-slate-300 dark:border-slate-600 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[#29ABE2]"
+                      className="rounded-md px-2.5 py-1 h-auto text-[11px] font-semibold"
                     >
-                      {copiedField === 'amount'
-                        ? isSw
-                          ? 'Imenakiliwa'
-                          : 'Copied'
-                        : isSw
-                          ? 'Nakili'
-                          : 'Copy'}
-                    </button>
+                      {copiedField === 'amount' ? 'Copied' : 'Copy'}
+                    </Button>
                   </div>
                 </div>
 
-                {paymentInfo.type === 'PAYBILL' && (
-                  <ol className="list-decimal list-inside space-y-1 text-xs text-slate-700 dark:text-slate-200">
-                    <li>
-                      {isSw
-                        ? 'Fungua M-Pesa → Lipa na M-Pesa → Paybill.'
-                        : 'Open M-Pesa → Lipa na M-Pesa → Paybill.'}
-                    </li>
-                    <li>
-                      {isSw
-                        ? `Weka Business Number: ${paymentInfo.numberOrCode}`
-                        : `Enter Business Number: ${paymentInfo.numberOrCode}`}
-                    </li>
-                    <li>
-                      {isSw
-                        ? `Weka Account Number: ${booking.bookingReference}`
-                        : `Enter Account Number: ${booking.bookingReference}`}
-                    </li>
-                    <li>
-                      {isSw
-                        ? `Weka Kiasi: ${formatKes(booking.totalAmountKes)} na uweke PIN yako.`
-                        : `Enter Amount: ${formatKes(booking.totalAmountKes)} and enter your PIN.`}
-                    </li>
-                  </ol>
-                )}
-
-                {paymentInfo.type === 'TILL' && (
-                  <ol className="list-decimal list-inside space-y-1 text-xs text-slate-700 dark:text-slate-200">
-                    <li>
-                      {isSw
-                        ? 'Fungua M-Pesa → Lipa na M-Pesa → Buy Goods and Services.'
-                        : 'Open M-Pesa → Lipa na M-Pesa → Buy Goods and Services.'}
-                    </li>
-                    <li>
-                      {isSw
-                        ? `Weka Till Number: ${paymentInfo.numberOrCode}`
-                        : `Enter Till Number: ${paymentInfo.numberOrCode}`}
-                    </li>
-                    <li>
-                      {isSw
-                        ? `Weka Kiasi: ${formatKes(booking.totalAmountKes)} na uweke PIN yako.`
-                        : `Enter Amount: ${formatKes(booking.totalAmountKes)} and enter your PIN.`}
-                    </li>
-                    <li>
-                      {isSw
-                        ? `Mfumo utathibitisha malipo yako kiotomatiki kwa kulinganisha nambari ya kumbukumbu (${booking.bookingReference}).`
-                        : `The system validates your payment automatically against reference ${booking.bookingReference}.`}
-                    </li>
-                  </ol>
-                )}
-
-                {paymentInfo.type === 'PHONE' && (
-                  <ol className="list-decimal list-inside space-y-1 text-xs text-slate-700 dark:text-slate-200">
-                    <li>
-                      {isSw
-                        ? 'Fungua M-Pesa → Send Money.'
-                        : 'Open M-Pesa → Send Money.'}
-                    </li>
-                    <li>
-                      {isSw
-                        ? `Weka Nambari ya Simu: ${paymentInfo.numberOrCode}`
-                        : `Enter Phone Number: ${paymentInfo.numberOrCode}`}
-                    </li>
-                    <li>
-                      {isSw
-                        ? `Weka Kiasi: ${formatKes(booking.totalAmountKes)} na uweke PIN yako.`
-                        : `Enter Amount: ${formatKes(booking.totalAmountKes)} and enter your PIN.`}
-                    </li>
-                    <li>
-                      {isSw
-                        ? `Mfumo utathibitisha malipo yako kiotomatiki kwa kulinganisha nambari ya kumbukumbu (${booking.bookingReference}).`
-                        : `The system validates your payment automatically against reference ${booking.bookingReference}.`}
-                    </li>
-                  </ol>
-                )}
+                <ol className="list-decimal list-inside space-y-1 text-xs text-slate-600 dark:text-slate-300 pt-1">
+                  {safaricomSteps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#2B2B2B] px-4 py-3 text-xs">
-                <span className="text-slate-600 dark:text-slate-300">
-                  {isSw
-                    ? 'Tunahakiki malipo yako kiotomatiki... Ukithibitishwa utapelekwa kwenye /tickets.'
-                    : 'Validating payment automatically against your reference code... You will be redirected to /tickets once confirmed.'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => fetchLatestBooking(false)}
-                  disabled={checkingNow}
-                  className="font-semibold text-[#1A8CC4] dark:text-[#29ABE2] hover:underline disabled:opacity-50"
-                >
-                  {checkingNow
-                    ? isSw
-                      ? 'Inakagua...'
-                      : 'Checking...'
-                    : isSw
-                      ? 'Kagua Sasa'
-                      : 'Check Now'}
-                </button>
-              </div>
+              <MpesaSmsVerificationCard
+                smsText={smsText}
+                verifying={verifying}
+                errorMsg={errorMsg}
+                onSmsChange={handleSmsChange}
+                onSubmit={handleVerifySms}
+              />
             </div>
           )}
         </section>

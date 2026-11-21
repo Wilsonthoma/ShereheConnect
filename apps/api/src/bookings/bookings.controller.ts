@@ -13,6 +13,7 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingFilterDto } from './dto/booking-filter.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { CheckInTicketDto } from './dto/check-in-ticket.dto';
+import { VerifyMpesaDto } from './dto/verify-mpesa.dto'; // 🔥 Import this
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -71,5 +72,15 @@ export class BookingsController {
     @Body() dto: CancelBookingDto,
   ) {
     return this.bookingsService.cancelBooking(id, user.id, dto);
+  }
+
+  // 🔥 NEW ROUTE: Verify M-Pesa SMS
+  @Post(':id/verify-sms')
+  verifyPaymentBySms(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() dto: VerifyMpesaDto,
+  ) {
+    return this.bookingsService.verifyPaymentBySms(id, user.id, dto.smsText);
   }
 }

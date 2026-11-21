@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -13,23 +14,146 @@ import {
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
-import { ProtectedRoute } from '@/components/auth';
 import { getToken, clearAuth, getUser } from '@/lib/auth';
 import { api, ApiException } from '@/lib/api';
 import { toast } from '@/lib/toast';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
+import { Button } from '@/components/ui';
+
+type TranslateFn = (key: string) => string;
+
+function translateWithFallback(
+  t: TranslateFn,
+  key: string,
+  fallback: string,
+): string {
+  const value = t(key);
+  return value === key ? fallback : value;
+}
+
+interface AccountUserProfile {
+  email?: string | null;
+  phone?: string | null;
+  role?: string | null;
+  emailVerified?: boolean | null;
+}
+
+const ProtectedRoute = dynamic(
+  () => import('@/components/auth').then((mod) => mod.ProtectedRoute),
+  {
+    ssr: false,
+    loading: () => (
+      <main className="min-h-screen bg-light dark:bg-slate-950 py-10 md:py-16">
+        <div className="container-md max-w-2xl space-y-6 animate-pulse">
+          <div className="h-6 w-36 rounded bg-slate-200 dark:bg-slate-800" />
+          <div className="h-9 w-48 rounded bg-slate-200 dark:bg-slate-800" />
+          <div className="h-72 rounded-2xl bg-slate-200 dark:bg-slate-800" />
+        </div>
+      </main>
+    ),
+  },
+);
+
+function AccountInfoSectionImpl({
+  user,
+}: {
+  user: AccountUserProfile | null;
+}) {
+  const { t } = useLanguage();
+  const tr = (key: string, fallback: string): string =>
+    translateWithFallback(t as TranslateFn, key, fallback);
+
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 md:p-8 mb-6 transition-colors">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-md">
+          <Shield className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h2 className="font-bold text-lg text-slate-900 dark:text-slate-100 transition-colors">
+            {tr('settings.accountInfo.title', 'Account Info')}
+          </h2>
+          <p className="text-xs text-slate-400 dark:text-slate-500 transition-colors">
+            {tr(
+              'settings.accountInfo.subtitle',
+              'Your current account details',
+            )}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3 text-sm">
+        <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-800 transition-colors">
+          <span className="text-slate-500 dark:text-slate-400">
+            {tr('settings.accountInfo.email', 'Email')}
+          </span>
+          <span className="font-medium text-slate-900 dark:text-slate-100">
+            {user?.email || '—'}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-800 transition-colors">
+          <span className="text-slate-500 dark:text-slate-400">
+            {tr('settings.accountInfo.phone', 'Phone')}
+          </span>
+          <span className="font-medium text-slate-900 dark:text-slate-100">
+            {user?.phone || '—'}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-800 transition-colors">
+          <span className="text-slate-500 dark:text-slate-400">
+            {tr('settings.accountInfo.role', 'Role')}
+          </span>
+          <span className="font-medium text-slate-900 dark:text-slate-100 capitalize">
+            {user?.role?.toLowerCase() || '—'}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between py-2">
+          <span className="text-slate-500 dark:text-slate-400">
+            {tr('settings.accountInfo.emailVerified', 'Email verified')}
+          </span>
+          <span
+            className={`font-medium ${
+              user?.emailVerified ? 'text-emerald-500' : 'text-amber-500'
+            }`}
+          >
+            {user?.emailVerified
+              ? tr('settings.accountInfo.verified', '✓ Yes')
+              : tr('settings.accountInfo.notVerified', '⚠ Not verified')}
+          </span>
+        </div>
+      </div>
+
+      <Link
+        href="/profile"
+        className="mt-6 inline-flex text-sm text-gold hover:text-orange font-semibold transition-colors"
+      >
+        {tr('settings.accountInfo.editProfile', 'Edit profile →')}
+      </Link>
+    </div>
+  );
+}
+
+const AccountInfoSection = dynamic(
+  () => Promise.resolve(AccountInfoSectionImpl),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 md:p-8 mb-6 h-60 animate-pulse" />
+    ),
+  },
+);
 
 function SettingsContent() {
   const router = useRouter();
   const { t } = useLanguage();
 
-  // Translation helper with English fallback
-  const tr = (key: string, fallback: string): string => {
-    const value = t(key as any);
-    return value === key ? fallback : value;
-  };
+  const tr = (key: string, fallback: string): string =>
+    translateWithFallback(t as TranslateFn, key, fallback);
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<AccountUserProfile | null>(null);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -41,7 +165,7 @@ function SettingsContent() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setUser(getUser());
+    setUser(getUser() as AccountUserProfile | null);
   }, []);
 
   const validate = (): boolean => {
@@ -100,10 +224,7 @@ function SettingsContent() {
 
       toast.success(
         tr('settings.success.title', 'Password changed'),
-        tr(
-          'settings.success.body',
-          'Your password has been updated.',
-        ),
+        tr('settings.success.body', 'Your password has been updated.'),
       );
 
       setCurrentPassword('');
@@ -113,14 +234,8 @@ function SettingsContent() {
       const msg =
         err instanceof ApiException
           ? err.message
-          : tr(
-              'settings.errors.changeFailed',
-              'Could not change password.',
-            );
-      toast.error(
-        tr('settings.error.title', 'Password change failed'),
-        msg,
-      );
+          : tr('settings.errors.changeFailed', 'Could not change password.');
+      toast.error(tr('settings.error.title', 'Password change failed'), msg);
       if (msg.toLowerCase().includes('current')) {
         setErrors({ currentPassword: msg });
       }
@@ -231,108 +346,29 @@ function SettingsContent() {
               disabled={isLoading}
               autoComplete="new-password"
               success={
-                confirmPassword.length > 0 &&
-                newPassword === confirmPassword
+                confirmPassword.length > 0 && newPassword === confirmPassword
               }
             />
 
-            <button
+            <Button
               type="submit"
+              variant="primary"
+              size="lg"
+              isLoading={isLoading}
               disabled={isLoading}
-              className="w-full mt-2 py-3 rounded-xl bg-brand-gradient text-white text-sm font-bold hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none transition-all flex items-center justify-center gap-2"
+              className="w-full mt-2 py-3 rounded-xl bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none text-sm font-bold"
             >
-              {isLoading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  {tr('settings.updating', 'Updating...')}
-                </>
-              ) : (
-                tr('settings.updatePassword', 'Update Password')
-              )}
-            </button>
+              {isLoading
+                ? tr('settings.updating', 'Updating...')
+                : tr('settings.updatePassword', 'Update Password')}
+            </Button>
           </form>
         </div>
 
         {/* ============================================
             ACCOUNT INFO
         ============================================ */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 md:p-8 mb-6 transition-colors">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-md">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg text-slate-900 dark:text-slate-100 transition-colors">
-                {tr('settings.accountInfo.title', 'Account Info')}
-              </h2>
-              <p className="text-xs text-slate-400 dark:text-slate-500 transition-colors">
-                {tr(
-                  'settings.accountInfo.subtitle',
-                  'Your current account details',
-                )}
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-3 text-sm">
-            <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-800 transition-colors">
-              <span className="text-slate-500 dark:text-slate-400">
-                {tr('settings.accountInfo.email', 'Email')}
-              </span>
-              <span className="font-medium text-slate-900 dark:text-slate-100">
-                {user?.email || '—'}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-800 transition-colors">
-              <span className="text-slate-500 dark:text-slate-400">
-                {tr('settings.accountInfo.phone', 'Phone')}
-              </span>
-              <span className="font-medium text-slate-900 dark:text-slate-100">
-                {user?.phone || '—'}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between py-2 border-b border-slate-200 dark:border-slate-800 transition-colors">
-              <span className="text-slate-500 dark:text-slate-400">
-                {tr('settings.accountInfo.role', 'Role')}
-              </span>
-              <span className="font-medium text-slate-900 dark:text-slate-100 capitalize">
-                {user?.role?.toLowerCase() || '—'}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between py-2">
-              <span className="text-slate-500 dark:text-slate-400">
-                {tr(
-                  'settings.accountInfo.emailVerified',
-                  'Email verified',
-                )}
-              </span>
-              <span
-                className={`font-medium ${
-                  user?.emailVerified
-                    ? 'text-emerald-500'
-                    : 'text-amber-500'
-                }`}
-              >
-                {user?.emailVerified
-                  ? tr('settings.accountInfo.verified', '✓ Yes')
-                  : tr(
-                      'settings.accountInfo.notVerified',
-                      '⚠ Not verified',
-                    )}
-              </span>
-            </div>
-          </div>
-
-          <Link
-            href="/profile"
-            className="mt-6 inline-flex text-sm text-gold hover:text-orange font-semibold transition-colors"
-          >
-            {tr('settings.accountInfo.editProfile', 'Edit profile →')}
-          </Link>
-        </div>
+        <AccountInfoSection user={user} />
 
         {/* ============================================
             SIGN OUT
@@ -355,13 +391,16 @@ function SettingsContent() {
             </div>
           </div>
 
-          <button
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
             onClick={handleLogout}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-red-500/10 text-red-500 text-sm font-semibold hover:bg-red-500 hover:text-white transition-all"
+            className="gap-2 px-6 py-3 rounded-full bg-red-500/10 text-red-500 border-red-500/20 text-sm font-semibold hover:bg-red-500 hover:text-white hover:border-red-500"
           >
             <LogOut className="w-4 h-4" />
             {tr('settings.signOut.button', 'Sign Out')}
-          </button>
+          </Button>
         </div>
       </div>
     </main>
@@ -396,10 +435,8 @@ function PasswordField({
 }) {
   const { t } = useLanguage();
 
-  const tr = (key: string, fallback: string): string => {
-    const v = t(key as any);
-    return v === key ? fallback : v;
-  };
+  const tr = (key: string, fallback: string): string =>
+    translateWithFallback(t as TranslateFn, key, fallback);
 
   const hasError = !!error;
   const showSuccess = success && !hasError;
@@ -414,8 +451,8 @@ function PasswordField({
           hasError
             ? 'border-red-500/60 focus-within:border-red-500'
             : showSuccess
-            ? 'border-emerald-500/50 focus-within:border-emerald-500'
-            : 'border-slate-200 dark:border-slate-700 focus-within:border-gold'
+              ? 'border-emerald-500/50 focus-within:border-emerald-500'
+              : 'border-slate-200 dark:border-slate-700 focus-within:border-gold'
         }`}
       >
         <Lock className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />

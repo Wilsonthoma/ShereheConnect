@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { bookingsApi, type BookingRecord } from '@/lib/bookingsApi';
 import type { GroupCategory, GroupPricingMode } from '@/lib/eventsApi';
+import { getToken } from '@/lib/auth';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 
 interface EventTicketTier {
@@ -48,6 +49,13 @@ interface EventDetail {
 
 type AttendanceMode = 'INDIVIDUAL' | 'GROUP';
 
+const ACTIVE_BOOKING_STATUSES = new Set([
+  'PENDING',
+  'PENDING_PAYMENT',
+  'CONFIRMED',
+  'CHECKED_IN',
+]);
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') ||
   'http://localhost:3001';
@@ -64,11 +72,12 @@ function getOccupantsPerUnit(tier: EventTicketTier): number {
     return tier.occupantsPerUnit;
   }
   if (tier.groupCategory === 'COUPLE') return 2;
+  if (tier.groupCategory === 'TABLE') return 6;
   return 1;
 }
 
 function getEffectivePricingMode(tier: EventTicketTier): GroupPricingMode {
-  return tier.pricingMode === 'BUNDLE_FIXED' ? 'BUNDLE_FIXED' : 'PER_OCCUPANT';
+  return tier.pricingMode === 'PER_OCCUPANT' ? 'PER_OCCUPANT' : 'BUNDLE_FIXED';
 }
 
 function calculateTierSubtotalKes(
@@ -82,6 +91,24 @@ function calculateTierSubtotalKes(
     return tier.priceKes * occupants * safeQty;
   }
   return tier.priceKes * safeQty;
+}
+
+function pickInitialTierId(list: EventTicketTier[]): string {
+  const firstAvailable =
+    list.find((item) => item.isActive !== false && getAvailableCount(item) > 0) ??
+    list[0];
+  return firstAvailable ? firstAvailable.id : '';
+}
+
+function isDuplicateBookingError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('already booked') ||
+    normalized.includes('duplicate') ||
+    normalized.includes('active booking') ||
+    normalized.includes('one booking per event') ||
+    normalized.includes('already have a booking')
+  );
 }
 
 export default function EventDetailPage() {
@@ -147,8 +174,14 @@ export default function EventDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [existingBooking, setExistingBooking] = useState<BookingRecord | null>(
+    null,
+  );
+
   const [attendanceMode, setAttendanceMode] =
     useState<AttendanceMode>('INDIVIDUAL');
+  const [selectedSubgroupFilter, setSelectedSubgroupFilter] =
+    useState<string>('ALL');
   const [selectedTierId, setSelectedTierId] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
   const [submitting, setSubmitting] = useState(false);
@@ -166,20 +199,27 @@ export default function EventDetailPage() {
     [tiers],
   );
 
-  const hasBothModes = individualTiers.length > 0 && groupTiers.length > 0;
+  const availableSubgroups = useMemo(() => {
+    const categories = new Set<string>();
+    for (const tier of groupTiers) {
+      if (tier.groupCategory) {
+        categories.add(String(tier.groupCategory).toUpperCase());
+      }
+    }
+    return ['ALL', ...Array.from(categories)];
+  }, [groupTiers]);
 
   const visibleTiers = useMemo(() => {
-    if (hasBothModes) {
-      return attendanceMode === 'GROUP' ? groupTiers : individualTiers;
+    if (attendanceMode === 'GROUP') {
+      if (selectedSubgroupFilter === 'ALL') return groupTiers;
+      return groupTiers.filter(
+        (tier) =>
+          String(tier.groupCategory || '').toUpperCase() ===
+          selectedSubgroupFilter,
+      );
     }
-    if (groupTiers.length > 0 && attendanceMode === 'GROUP') {
-      return groupTiers;
-    }
-    if (individualTiers.length > 0) {
-      return individualTiers;
-    }
-    return tiers;
-  }, [hasBothModes, attendanceMode, groupTiers, individualTiers, tiers]);
+    return individualTiers;
+  }, [attendanceMode, selectedSubgroupFilter, groupTiers, individualTiers]);
 
   useEffect(() => {
     if (!slug) return;
@@ -189,6 +229,7 @@ export default function EventDetailPage() {
     async function loadEvent() {
       setLoading(true);
       setError(null);
+      setExistingBooking(null);
       try {
         const res = await fetch(
           `${API_BASE_URL}/events/${encodeURIComponent(slug)}`,
@@ -223,16 +264,35 @@ export default function EventDetailPage() {
               ? 'GROUP'
               : 'INDIVIDUAL';
         setAttendanceMode(initialMode);
+        setSelectedSubgroupFilter('ALL');
 
-        const pool =
-          initialMode === 'INDIVIDUAL' && soloTiers.length > 0
-            ? soloTiers
-            : loadedTiers;
-        const firstAvailable =
-          pool.find(
-            (item) => item.isActive !== false && getAvailableCount(item) > 0,
-          ) ?? pool[0];
-        setSelectedTierId(firstAvailable ? firstAvailable.id : '');
+        const pool = initialMode === 'GROUP' ? grpTiers : soloTiers;
+        setSelectedTierId(pickInitialTierId(pool));
+
+        // Check if the authenticated user already has an active booking on this event
+        const token = getToken();
+        if (token && loadedEvent?.id) {
+          try {
+            const myBookingsRes = await bookingsApi.listMyBookings?.();
+            const list: BookingRecord[] = Array.isArray(myBookingsRes)
+              ? myBookingsRes
+              : Array.isArray((myBookingsRes as { items?: BookingRecord[] })?.items)
+                ? (myBookingsRes as { items: BookingRecord[] }).items
+                : [];
+            if (active) {
+              const activeMatch = list.find(
+                (b) =>
+                  b.event?.id === loadedEvent.id &&
+                  ACTIVE_BOOKING_STATUSES.has(String(b.status).toUpperCase()),
+              );
+              if (activeMatch) {
+                setExistingBooking(activeMatch);
+              }
+            }
+          } catch {
+            // Non-blocking check; backend enforces duplicate prevention too
+          }
+        }
       } catch (err) {
         if (!active || (err as Error)?.name === 'AbortError') return;
         setError(err instanceof Error ? err.message : t('evt.detail.loadError'));
@@ -250,17 +310,23 @@ export default function EventDetailPage() {
 
   function handleSelectAttendanceMode(mode: AttendanceMode) {
     setAttendanceMode(mode);
-    const pool =
-      mode === 'GROUP'
+    setSelectedSubgroupFilter('ALL');
+    const pool = mode === 'GROUP' ? groupTiers : individualTiers;
+    setSelectedTierId(pickInitialTierId(pool));
+    setQuantity(1);
+    setBookingError(null);
+  }
+
+  function handleSelectSubgroupFilter(subgroup: string) {
+    setSelectedSubgroupFilter(subgroup);
+    const filtered =
+      subgroup === 'ALL'
         ? groupTiers
-        : individualTiers.length > 0
-          ? individualTiers
-          : tiers;
-    const firstAvailable =
-      pool.find(
-        (item) => item.isActive !== false && getAvailableCount(item) > 0,
-      ) ?? pool[0];
-    setSelectedTierId(firstAvailable ? firstAvailable.id : '');
+        : groupTiers.filter(
+            (tier) =>
+              String(tier.groupCategory || '').toUpperCase() === subgroup,
+          );
+    setSelectedTierId(pickInitialTierId(filtered));
     setQuantity(1);
     setBookingError(null);
   }
@@ -297,6 +363,15 @@ export default function EventDetailPage() {
     e.preventDefault();
     if (!event || !selectedTier) return;
 
+    if (existingBooking) {
+      setBookingError(
+        isSw
+          ? `Tayari una nafasi hai (${existingBooking.bookingReference}) ya tukio hili. Nafasi moja tu inaruhusiwa kwa kila tukio.`
+          : `You already have an active booking (${existingBooking.bookingReference}) for this event. Only one active booking is allowed per event.`,
+      );
+      return;
+    }
+
     setSubmitting(true);
     setBookingError(null);
 
@@ -308,7 +383,7 @@ export default function EventDetailPage() {
       });
 
       if (booking.status === 'CONFIRMED' && totalKes === 0) {
-        router.push('/tickets');
+        router.push(`/tickets?bookingId=${encodeURIComponent(booking.id)}`);
         return;
       }
 
@@ -323,7 +398,15 @@ export default function EventDetailPage() {
         router.push(`/login?next=${encodeURIComponent(`/events/${slug}`)}`);
         return;
       }
-      setBookingError(message);
+      if (isDuplicateBookingError(message)) {
+        setBookingError(
+          isSw
+            ? 'Tayari una nafasi hai ya tukio hili. Huwezi kuweka nafasi mbili kwa tukio moja.'
+            : 'You already have an active booking for this event. Duplicate bookings on the same event are not allowed.',
+        );
+      } else {
+        setBookingError(message);
+      }
       setSubmitting(false);
     }
   }
@@ -435,9 +518,30 @@ export default function EventDetailPage() {
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {isSw
                 ? 'Chagua kwanza jinsi utakavyohudhuria (Binafsi au Kikundi), kisha chagua kifurushi na idadi.'
-                : 'First choose how you want to attend (Individual or Group), then choose a tier and quantity.'}
+                : 'First choose how you want to attend (Individual or Group), then pick a subgroup and quantity.'}
             </p>
           </div>
+
+          {existingBooking && (
+            <div className="rounded-xl border border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+              <p className="font-semibold">
+                {isSw
+                  ? `Tayari una nafasi hai (${existingBooking.bookingReference}) kwa tukio hili.`
+                  : `You already have an active booking (${existingBooking.bookingReference}) for this event.`}
+              </p>
+              <p className="text-[11px] opacity-90">
+                {isSw
+                  ? 'Nafasi moja tu ya tukio hili inaruhusiwa kwa kila akaunti.'
+                  : 'Only one active booking per event is allowed per account.'}
+              </p>
+              <Link
+                href="/tickets"
+                className="inline-block font-bold underline text-[#1A8CC4] dark:text-[#29ABE2]"
+              >
+                {isSw ? 'Angalia tiketi zako' : 'View your tickets'}
+              </Link>
+            </div>
+          )}
 
           {tiers.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -445,128 +549,167 @@ export default function EventDetailPage() {
             </p>
           ) : (
             <form onSubmit={handleBookTickets} className="space-y-4">
-              {hasBothModes && (
-                <div className="space-y-1.5">
-                  <span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
-                    {isSw ? 'Jinsi ya Kuhudhuria' : 'How Are You Attending?'}
+              <div className="space-y-1.5">
+                <span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  {isSw ? 'Jinsi ya Kuhudhuria' : 'How Are You Attending?'}
+                </span>
+                <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 dark:bg-[#2B2B2B] p-1 border border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    disabled={individualTiers.length === 0}
+                    onClick={() => handleSelectAttendanceMode('INDIVIDUAL')}
+                    className={`rounded-lg py-2 px-3 text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                      attendanceMode === 'INDIVIDUAL'
+                        ? 'bg-white dark:bg-[#3A3A3A] text-[#1A8CC4] dark:text-[#29ABE2] shadow-sm'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {isSw
+                      ? `Binafsi (${individualTiers.length})`
+                      : `Individual (${individualTiers.length})`}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={groupTiers.length === 0}
+                    onClick={() => handleSelectAttendanceMode('GROUP')}
+                    className={`rounded-lg py-2 px-3 text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                      attendanceMode === 'GROUP'
+                        ? 'bg-white dark:bg-[#3A3A3A] text-[#1A8CC4] dark:text-[#29ABE2] shadow-sm'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {isSw
+                      ? `Kikundi (${groupTiers.length})`
+                      : `Group (${groupTiers.length})`}
+                  </button>
+                </div>
+              </div>
+
+              {attendanceMode === 'GROUP' && availableSubgroups.length > 2 && (
+                <div className="space-y-1">
+                  <span className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    {isSw ? 'Chuja Kundi' : 'Filter Group Subgroup'}
                   </span>
-                  <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 dark:bg-[#2B2B2B] p-1 border border-slate-200 dark:border-slate-700">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectAttendanceMode('INDIVIDUAL')}
-                      className={`rounded-lg py-2 px-3 text-xs font-semibold transition-all ${
-                        attendanceMode === 'INDIVIDUAL'
-                          ? 'bg-white dark:bg-[#3A3A3A] text-[#1A8CC4] dark:text-[#29ABE2] shadow-sm'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      {isSw
-                        ? `Binafsi (${individualTiers.length})`
-                        : `Individual (${individualTiers.length})`}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSelectAttendanceMode('GROUP')}
-                      className={`rounded-lg py-2 px-3 text-xs font-semibold transition-all ${
-                        attendanceMode === 'GROUP'
-                          ? 'bg-white dark:bg-[#3A3A3A] text-[#1A8CC4] dark:text-[#29ABE2] shadow-sm'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      {isSw
-                        ? `Kikundi (${groupTiers.length})`
-                        : `Group (${groupTiers.length})`}
-                    </button>
+                  <div className="flex flex-wrap gap-1.5">
+                    {availableSubgroups.map((subgroup) => (
+                      <button
+                        key={subgroup}
+                        type="button"
+                        onClick={() => handleSelectSubgroupFilter(subgroup)}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold border transition-colors ${
+                          selectedSubgroupFilter === subgroup
+                            ? 'border-[#29ABE2] bg-[#E0F2FE] dark:bg-[#29ABE2]/20 text-[#1A8CC4] dark:text-[#29ABE2]'
+                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#2B2B2B] text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {subgroup === 'ALL'
+                          ? isSw
+                            ? 'Yote'
+                            : 'All Subgroups'
+                          : formatGroupCategoryLabel(subgroup)}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
 
               <div className="space-y-2.5">
-                {visibleTiers.map((tier) => {
-                  const available = getAvailableCount(tier);
-                  const disabled = tier.isActive === false || available <= 0;
-                  const isSelected = tier.id === selectedTierId;
-                  const occupantsPerUnit = getOccupantsPerUnit(tier);
-                  const pricingMode = getEffectivePricingMode(tier);
-                  const samplePrice = calculateTierSubtotalKes(tier, 1);
+                {visibleTiers.length === 0 ? (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {isSw
+                      ? 'Hakuna vifurushi katika chaguo hili kwa sasa.'
+                      : 'No tiers available under this selection.'}
+                  </p>
+                ) : (
+                  visibleTiers.map((tier) => {
+                    const available = getAvailableCount(tier);
+                    const disabled = tier.isActive === false || available <= 0;
+                    const isSelected = tier.id === selectedTier?.id;
+                    const occupantsPerUnit = getOccupantsPerUnit(tier);
+                    const pricingMode = getEffectivePricingMode(tier);
+                    const samplePrice = calculateTierSubtotalKes(tier, 1);
 
-                  return (
-                    <button
-                      key={tier.id}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => setSelectedTierId(tier.id)}
-                      className={`w-full text-left rounded-xl border p-3.5 transition-all ${
-                        isSelected
-                          ? 'border-[#29ABE2] bg-[#E0F2FE]/70 dark:bg-[#29ABE2]/15'
-                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#2B2B2B]'
-                      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="font-semibold text-sm text-slate-900 dark:text-white block">
-                            {tier.name}
-                          </span>
-                          {tier.isGroupSubgroup && (
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                              <span className="inline-flex items-center rounded-md bg-[#E0F2FE] dark:bg-[#29ABE2]/20 px-2 py-0.5 text-[11px] font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
-                                {formatGroupCategoryLabel(tier.groupCategory)}
-                              </span>
-                              <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-[#3A3A3A] px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                                {t('evt.detail.occupantsPerUnit', {
-                                  count: occupantsPerUnit,
-                                  label:
-                                    occupantsPerUnit === 1
-                                      ? t('common.occupant.singular')
-                                      : t('common.occupant.plural'),
-                                })}
-                              </span>
-                              <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-[#3A3A3A] px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                                {pricingMode === 'BUNDLE_FIXED'
-                                  ? t('common.pricing.fixedBundle')
-                                  : t('common.pricing.perOccupant')}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span className="font-bold text-sm text-[#1A8CC4] dark:text-[#29ABE2] block">
-                            {formatKes(samplePrice)}
-                          </span>
-                          {tier.isGroupSubgroup &&
-                            pricingMode === 'PER_OCCUPANT' &&
-                            tier.priceKes > 0 && (
-                              <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                                {t('evt.detail.perOccupantRate', {
-                                  amount: formatKes(tier.priceKes),
-                                })}
-                              </span>
+                    return (
+                      <button
+                        key={tier.id}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => {
+                          setSelectedTierId(tier.id);
+                          setBookingError(null);
+                        }}
+                        className={`w-full text-left rounded-xl border p-3.5 transition-all ${
+                          isSelected
+                            ? 'border-[#29ABE2] bg-[#E0F2FE]/70 dark:bg-[#29ABE2]/15'
+                            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#2B2B2B]'
+                        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="font-semibold text-sm text-slate-900 dark:text-white block">
+                              {tier.name}
+                            </span>
+                            {tier.isGroupSubgroup && (
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="inline-flex items-center rounded-md bg-[#E0F2FE] dark:bg-[#29ABE2]/20 px-2 py-0.5 text-[11px] font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
+                                  {formatGroupCategoryLabel(tier.groupCategory)}
+                                </span>
+                                <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-[#3A3A3A] px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                                  {t('evt.detail.occupantsPerUnit', {
+                                    count: occupantsPerUnit,
+                                    label:
+                                      occupantsPerUnit === 1
+                                        ? t('common.occupant.singular')
+                                        : t('common.occupant.plural'),
+                                  })}
+                                </span>
+                                <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-[#3A3A3A] px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                                  {pricingMode === 'BUNDLE_FIXED'
+                                    ? t('common.pricing.fixedBundle')
+                                    : t('common.pricing.perOccupant')}
+                                </span>
+                              </div>
                             )}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="font-bold text-sm text-[#1A8CC4] dark:text-[#29ABE2] block">
+                              {formatKes(samplePrice)}
+                            </span>
+                            {tier.isGroupSubgroup &&
+                              pricingMode === 'PER_OCCUPANT' &&
+                              tier.priceKes > 0 && (
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                  {t('evt.detail.perOccupantRate', {
+                                    amount: formatKes(tier.priceKes),
+                                  })}
+                                </span>
+                              )}
+                          </div>
                         </div>
-                      </div>
 
-                      {tier.description && (
-                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1.5">
-                          {tier.description}
+                        {tier.description && (
+                          <p className="text-xs text-slate-600 dark:text-slate-300 mt-1.5">
+                            {tier.description}
+                          </p>
+                        )}
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                          {available > 0
+                            ? t('evt.detail.remainingUnits', {
+                                count: available,
+                                unitLabel: tier.isGroupSubgroup
+                                  ? available === 1
+                                    ? t('common.unit.singular')
+                                    : t('common.unit.plural')
+                                  : available === 1
+                                    ? t('common.ticket.singular')
+                                    : t('common.ticket.plural'),
+                              })
+                            : t('evt.detail.soldOut')}
                         </p>
-                      )}
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                        {available > 0
-                          ? t('evt.detail.remainingUnits', {
-                              count: available,
-                              unitLabel: tier.isGroupSubgroup
-                                ? available === 1
-                                  ? t('common.unit.singular')
-                                  : t('common.unit.plural')
-                                : available === 1
-                                  ? t('common.ticket.singular')
-                                  : t('common.ticket.plural'),
-                            })
-                          : t('evt.detail.soldOut')}
-                      </p>
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })
+                )}
               </div>
 
               {selectedTier && (
@@ -635,16 +778,21 @@ export default function EventDetailPage() {
                     type="submit"
                     disabled={
                       submitting ||
+                      Boolean(existingBooking) ||
                       selectedTier.isActive === false ||
                       getAvailableCount(selectedTier) <= 0
                     }
                     className="btn-coddy w-full text-sm disabled:opacity-50"
                   >
-                    {submitting
-                      ? t('evt.detail.processing')
-                      : totalKes === 0
-                        ? t('evt.detail.claimFree')
-                        : t('evt.detail.reserveHold')}
+                    {existingBooking
+                      ? isSw
+                        ? 'Tayari Umeweka Nafasi'
+                        : 'Already Booked'
+                      : submitting
+                        ? t('evt.detail.processing')
+                        : totalKes === 0
+                          ? t('evt.detail.claimFree')
+                          : t('evt.detail.reserveHold')}
                   </button>
                 </>
               )}

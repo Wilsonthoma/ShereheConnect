@@ -1,21 +1,141 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { AlertCircle, Check, Gem } from 'lucide-react';
 import {
   organizerApi,
   SubscriptionOverview,
   SubscriptionPlan,
 } from '@/lib/organizerApi';
-import { FullPageLoader } from '@/components/ui';
+import { Button, FullPageLoader } from '@/components/ui';
 import { toast } from '@/lib/toast';
-import { MpesaStkPushModal } from '@/components/organizer/MpesaStkPushModal';
+
+const MpesaStkPushModal = dynamic(
+  () =>
+    import('@/components/organizer/MpesaStkPushModal').then(
+      (mod) => mod.MpesaStkPushModal,
+    ),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
+
+function formatLimit(limit: number | null): string {
+  return limit === null ? 'Unlimited' : String(limit);
+}
+
+function PlanOption({
+  plan,
+  hasActiveSubscription,
+  isCurrent,
+  onSelectPlan,
+}: {
+  plan: SubscriptionPlan;
+  hasActiveSubscription: boolean;
+  isCurrent: boolean;
+  onSelectPlan: (plan: SubscriptionPlan) => void;
+}) {
+  const isPaidPlan = plan.priceKes > 0 && plan.code.toUpperCase() !== 'FREE';
+  const canSelect = !isCurrent && isPaidPlan;
+
+  return (
+    <article className="flex flex-col border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-bold text-slate-900 dark:text-white">
+            {plan.name}
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            {plan.priceKes === 0
+              ? 'Free'
+              : `KES ${plan.priceKes.toLocaleString()} / ${plan.billingInterval.toLowerCase()}`}
+          </p>
+        </div>
+        {isCurrent && (
+          <Check
+            className="h-5 w-5 text-emerald-600"
+            aria-label="Current plan"
+          />
+        )}
+      </div>
+      <ul className="my-5 flex-1 space-y-3 text-sm text-slate-600 dark:text-slate-300">
+        <li>{formatLimit(plan.maxEventsPerMonth)} events per month</li>
+        <li>{formatLimit(plan.maxAttendeesEvent)} attendees per event</li>
+      </ul>
+      <Button
+        type="button"
+        variant={canSelect ? 'primary' : 'outline'}
+        size="md"
+        disabled={!canSelect}
+        onClick={() => canSelect && onSelectPlan(plan)}
+        className={
+          canSelect
+            ? 'w-full rounded-lg px-3 py-2 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white border-none'
+            : 'w-full rounded-lg px-3 py-2 text-sm font-semibold border-slate-200 text-slate-500 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700'
+        }
+      >
+        {isCurrent
+          ? 'Current plan'
+          : isPaidPlan
+            ? hasActiveSubscription
+              ? `Switch to ${plan.code}`
+              : `Subscribe to ${plan.code}`
+            : 'Free tier'}
+      </Button>
+    </article>
+  );
+}
+
+function SubscriptionPlansGridImpl({
+  plans,
+  activePlanId,
+  onSelectPlan,
+}: {
+  plans: SubscriptionPlan[];
+  activePlanId?: string;
+  onSelectPlan: (chosenPlan: SubscriptionPlan) => void;
+}) {
+  return (
+    <div className="grid gap-5 md:grid-cols-3">
+      {plans.map((plan) => (
+        <PlanOption
+          key={plan.id}
+          plan={plan}
+          hasActiveSubscription={Boolean(activePlanId)}
+          isCurrent={plan.id === activePlanId}
+          onSelectPlan={onSelectPlan}
+        />
+      ))}
+    </div>
+  );
+}
+
+const SubscriptionPlansGrid = dynamic(
+  () => Promise.resolve(SubscriptionPlansGridImpl),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid gap-5 md:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, idx) => (
+          <div
+            key={idx}
+            className="h-56 border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 animate-pulse"
+          />
+        ))}
+      </div>
+    ),
+  },
+);
 
 export default function SubscriptionPage() {
   const [overview, setOverview] = useState<SubscriptionOverview | null>(null);
   const [profilePhone, setProfilePhone] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(
+    null,
+  );
 
   const loadSubscriptionData = useCallback(async (showSpinner = false) => {
     if (showSpinner) setLoading(true);
@@ -28,8 +148,11 @@ export default function SubscriptionPage() {
       if (profileData?.phone) {
         setProfilePhone(profileData.phone);
       }
-    } catch (error: any) {
-      toast.error('Could not load plans', error?.message);
+    } catch (error: unknown) {
+      toast.error(
+        'Could not load plans',
+        error instanceof Error ? error.message : undefined,
+      );
     } finally {
       if (showSpinner) setLoading(false);
     }
@@ -69,12 +192,17 @@ export default function SubscriptionPage() {
               <Gem className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase text-slate-500">Current plan</p>
-              <h3 className="font-bold text-slate-900 dark:text-white">{activePlan.name}</h3>
+              <p className="text-xs font-semibold uppercase text-slate-500">
+                Current plan
+              </p>
+              <h3 className="font-bold text-slate-900 dark:text-white">
+                {activePlan.name}
+              </h3>
             </div>
           </div>
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            {overview.eventsThisMonth} of {formatLimit(activePlan.maxEventsPerMonth)} events used this month
+            {overview.eventsThisMonth} of{' '}
+            {formatLimit(activePlan.maxEventsPerMonth)} events used this month
           </p>
         </section>
       ) : (
@@ -86,94 +214,33 @@ export default function SubscriptionPage() {
                 No active subscription yet
               </p>
               <p className="text-xs text-amber-800/80 dark:text-amber-300/80">
-                Choose a plan below (starting at KES 50) and complete the M-Pesa STK Push prompt to activate your subscription.
+                Choose a plan below (starting at KES 50) and complete the
+                M-Pesa STK Push prompt to activate your subscription.
               </p>
             </div>
           </div>
         </section>
       )}
 
-      <div className="grid gap-5 md:grid-cols-3">
-        {overview.plans.map((plan) => (
-          <PlanOption
-            key={plan.id}
-            plan={plan}
-            hasActiveSubscription={Boolean(activePlan)}
-            isCurrent={plan.id === activePlan?.id}
-            onSelectPlan={(chosenPlan) => setSelectedPlan(chosenPlan)}
-          />
-        ))}
-      </div>
+      <SubscriptionPlansGrid
+        plans={overview.plans}
+        activePlanId={activePlan?.id}
+        onSelectPlan={(chosenPlan) => setSelectedPlan(chosenPlan)}
+      />
 
       <p className="border-l-2 border-emerald-600 pl-4 text-sm text-slate-600 dark:text-slate-300">
-        Select a plan to receive an M-Pesa STK Push prompt. Your subscription activates only after Daraja confirms payment.
+        Select a plan to receive an M-Pesa STK Push prompt. Your subscription
+        activates only after Daraja confirms payment.
       </p>
 
-      <MpesaStkPushModal
-        plan={selectedPlan}
-        initialPhone={profilePhone}
-        onClose={() => setSelectedPlan(null)}
-        onRefreshSubscription={() => loadSubscriptionData(false)}
-      />
+      {selectedPlan && (
+        <MpesaStkPushModal
+          plan={selectedPlan}
+          initialPhone={profilePhone}
+          onClose={() => setSelectedPlan(null)}
+          onRefreshSubscription={() => loadSubscriptionData(false)}
+        />
+      )}
     </div>
   );
-}
-
-function PlanOption({
-  plan,
-  hasActiveSubscription,
-  isCurrent,
-  onSelectPlan,
-}: {
-  plan: SubscriptionPlan;
-  hasActiveSubscription: boolean;
-  isCurrent: boolean;
-  onSelectPlan: (plan: SubscriptionPlan) => void;
-}) {
-  const isPaidPlan = plan.priceKes > 0 && plan.code.toUpperCase() !== 'FREE';
-  const canSelect = !isCurrent && isPaidPlan;
-
-  return (
-    <article className="flex flex-col border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-bold text-slate-900 dark:text-white">{plan.name}</h3>
-          <p className="mt-1 text-sm text-slate-500">
-            {plan.priceKes === 0
-              ? 'Free'
-              : `KES ${plan.priceKes.toLocaleString()} / ${plan.billingInterval.toLowerCase()}`}
-          </p>
-        </div>
-        {isCurrent && (
-          <Check className="h-5 w-5 text-emerald-600" aria-label="Current plan" />
-        )}
-      </div>
-      <ul className="my-5 flex-1 space-y-3 text-sm text-slate-600 dark:text-slate-300">
-        <li>{formatLimit(plan.maxEventsPerMonth)} events per month</li>
-        <li>{formatLimit(plan.maxAttendeesEvent)} attendees per event</li>
-      </ul>
-      <button
-        type="button"
-        disabled={!canSelect}
-        onClick={() => canSelect && onSelectPlan(plan)}
-        className={`w-full rounded-lg px-3 py-2 text-sm font-semibold transition ${
-          canSelect
-            ? 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer'
-            : 'border border-slate-200 text-slate-500 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700'
-        }`}
-      >
-        {isCurrent
-          ? 'Current plan'
-          : isPaidPlan
-            ? hasActiveSubscription
-              ? `Switch to ${plan.code}`
-              : `Subscribe to ${plan.code}`
-            : 'Free tier'}
-      </button>
-    </article>
-  );
-}
-
-function formatLimit(limit: number | null): string {
-  return limit === null ? 'Unlimited' : String(limit);
 }

@@ -6,16 +6,19 @@
   --color-coddy-blue: #29ABE2;
   --color-coddy-blue-hover: #1A8CC4;
   --color-coddy-blue-light: #E0F2FE;
-  
+
   /* ---------- Coddy Backgrounds ---------- */
   --color-coddy-white: #FFFFFF;
   --color-coddy-charcoal: #2B2B2B;
   --color-coddy-gray: #3A3A3A;
 
   /* ---------- Fonts Mapping ---------- */
-  --font-display: var(--font-kaushan), cursive; /* For H1 */
-  --font-heading: var(--font-coddy), sans-serif; /* For H2-H6 */
-  --font-sans: var(--font-varela), system-ui, sans-serif; /* For paragraphs & UI */
+  /* Headings pair Kaushan Script + Coddy Round */
+  --font-display: var(--font-kaushan), var(--font-coddy), cursive, sans-serif;
+  /* Subheadings & secondary headings use Coddy Round (paired with Kaushan Script fallback) */
+  --font-heading: var(--font-coddy), var(--font-kaushan), sans-serif, cursive;
+  /* Body & normal UI text use clean Varela Round */
+  --font-sans: var(--font-varela), system-ui, -apple-system, sans-serif;
 
   /* ---------- Border Radius ---------- */
   --radius-sm: 0.5rem;
@@ -27,7 +30,11 @@
 }
 
 @layer base {
-  * { box-sizing: border-box; }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
   html {
     background-color: var(--color-coddy-white);
@@ -38,7 +45,7 @@
     background-color: var(--color-coddy-charcoal);
   }
 
-  /* Body uses Varela Round (Paragraphs, normal text) */
+  /* Normal body & UI text */
   body {
     margin: 0;
     padding: 0;
@@ -46,6 +53,8 @@
     color: #1e293b;
     font-family: var(--font-sans);
     font-weight: 400;
+    letter-spacing: normal;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
 
@@ -54,71 +63,118 @@
     color: #f1f5f9;
   }
 
-  /* --- FONT ASSIGNMENTS --- */
-  
-  /* H1 ONLY gets Kaushan Script */
-  h1 {
-    font-family: var(--font-display);
+  /* --- HEADINGS (Kaushan Script + Coddy Round together) --- */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-kaushan), var(--font-coddy), cursive, sans-serif;
     font-weight: 400;
+    letter-spacing: normal;
   }
 
-  /* H2 to H6 gets Coddy Round */
-  h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading);
-    font-weight: 700; /* Coddy headings are usually bold */
-    letter-spacing: 0.02em;
+  /* --- SUBHEADINGS (Coddy Round) --- */
+  .subheading,
+  [data-subheading="true"] {
+    font-family: var(--font-coddy), sans-serif;
+    font-weight: 400;
+    letter-spacing: normal;
   }
 
-  /* Paragraphs, spans, lists use Varela Round */
-  p, span, li, div, a, button, input, textarea {
+  /* Normal text across paragraphs, spans, lists, containers, and form controls */
+  p,
+  span,
+  li,
+  div,
+  a,
+  button,
+  input,
+  textarea,
+  select,
+  label {
     font-family: var(--font-sans);
+    font-weight: 400;
+    letter-spacing: normal;
   }
 
-  a { color: inherit; text-decoration: none; }
-  button { font-family: inherit; cursor: pointer; border: none; background: none; }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button {
+    font-family: var(--font-sans);
+    cursor: pointer;
+  }
 }
 
 @layer components {
-  /* ... (Keep your buttons, gradients, containers exactly as they are) ... */
   .text-brand-gradient {
-    background: linear-gradient(135deg, var(--color-coddy-blue), var(--color-coddy-blue-hover));
+    background: linear-gradient(
+      135deg,
+      var(--color-coddy-blue),
+      var(--color-coddy-blue-hover)
+    );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
 
   .bg-brand-gradient {
-    background: linear-gradient(135deg, var(--color-coddy-blue), var(--color-coddy-blue-hover));
+    background: linear-gradient(
+      135deg,
+      var(--color-coddy-blue),
+      var(--color-coddy-blue-hover)
+    );
   }
 
   .btn-coddy {
     background-color: var(--color-coddy-blue);
     color: white;
+    border: none;
     border-radius: var(--radius-full);
     padding: 0.75rem 2rem;
-    font-weight: 700;
-    font-family: var(--font-sans); /* Varela Round for buttons */
+    font-weight: 400;
+    font-family: var(--font-sans);
     box-shadow: 0 4px 0 0 var(--color-coddy-blue-hover);
-    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    transition:
+      transform 120ms ease,
+      box-shadow 120ms ease,
+      filter 150ms ease;
   }
+
   .btn-coddy:hover {
-    transform: translateY(2px);
-    box-shadow: 0 2px 0 0 var(--color-coddy-blue-hover);
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+    box-shadow: 0 5px 0 0 var(--color-coddy-blue-hover);
+  }
+
+  .btn-coddy:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 0 var(--color-coddy-blue-hover);
   }
 
   .heading-display {
-    font-family: var(--font-display);
+    font-family: var(--font-kaushan), var(--font-coddy), cursive, sans-serif;
     font-weight: 400;
-    letter-spacing: 0.5px;
+    letter-spacing: normal;
     line-height: 1.3;
     padding-top: 0.15em;
     padding-bottom: 0.15em;
     display: block;
   }
 
-  .heading-xl { font-size: clamp(56px, 10vw, 100px); }
-  .heading-lg { font-size: clamp(48px, 9vw, 88px); }
-  .heading-md { font-size: clamp(40px, 7vw, 68px); }
+  .heading-xl {
+    font-size: clamp(56px, 10vw, 100px);
+  }
+  .heading-lg {
+    font-size: clamp(48px, 9vw, 88px);
+  }
+  .heading-md {
+    font-size: clamp(40px, 7vw, 68px);
+  }
 
   .container-fluid {
     width: 100%;

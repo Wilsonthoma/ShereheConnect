@@ -1,9 +1,31 @@
 'use client';
 
-import { Navbar, Footer } from '@/components/layout';
-import { VerificationBanner } from '@/components/auth';
+import dynamic from 'next/dynamic';
+import { Navbar } from '@/components/layout';
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+const VerificationBanner = dynamic(
+  () => import('@/components/auth').then((mod) => mod.VerificationBanner),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
+
+const Footer = dynamic(
+  () => import('@/components/layout').then((mod) => mod.Footer),
+  {
+    ssr: false,
+    loading: () => (
+      <footer className="h-24 bg-light dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800" />
+    ),
+  },
+);
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <>
       <Navbar />

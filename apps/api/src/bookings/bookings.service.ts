@@ -20,7 +20,7 @@ import { BookingFilterDto } from './dto/booking-filter.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { CheckInTicketDto } from './dto/check-in-ticket.dto';
 
-const HOLD_MINUTES = 15;
+const HOLD_MINUTES = 5;
 const EXPIRY_SWEEP_COOLDOWN_MS = 5000;
 
 @Injectable()
@@ -44,6 +44,55 @@ export class BookingsService {
     return booking.occupantsCount && booking.occupantsCount > 0
       ? booking.occupantsCount
       : booking.quantity;
+  }
+
+  private normalizeKenyanPhone(raw?: string | null): string | null {
+    if (!raw) return null;
+    const digits = raw.replace(/\D/g, '');
+    if (/^254[17]\d{8}$/.test(digits)) return digits;
+    if (/^0[17]\d{8}$/.test(digits)) return `254${digits.slice(1)}`;
+    if (/^[17]\d{8}$/.test(digits)) return `254${digits}`;
+    return null;
+  }
+
+  private parseMpesaSms(smsText: string): {
+    receiptCode: string | null;
+    amountKes: number | null;
+    phones: string[];
+  } {
+    const cleaned = smsText.replace(/\s+/g, ' ').trim();
+
+    const codeMatch =
+      cleaned.match(/\b([A-Z0-9]{10})\b(?=\s+Confirmed)/i) ??
+      cleaned.match(
+        /\b(?:M-?Pesa\s+(?:receipt|code|ref)[:\s-]*)?([A-Z0-9]{10})\b/i,
+      );
+
+    const amountMatch = cleaned.match(
+      /\b(?:Ksh|KES)\s*([\d,]+(?:\.\d{1,2})?)/i,
+    );
+
+    const rawPhones = cleaned.match(/(?:\+?254|0)[17]\d{8}/g) ?? [];
+    const phones = Array.from(
+      new Set(
+        rawPhones
+          .map((p) => this.normalizeKenyanPhone(p))
+          .filter((p): p is string => Boolean(p)),
+      ),
+    );
+
+    const parsedAmount = amountMatch
+      ? Number.parseFloat(amountMatch[1].replace(/,/g, ''))
+      : null;
+
+    return {
+      receiptCode: codeMatch ? codeMatch[1].toUpperCase() : null,
+      amountKes:
+        parsedAmount !== null && Number.isFinite(parsedAmount)
+          ? parsedAmount
+          : null,
+      phones,
+    };
   }
 
   private async issueTicketsForBooking(
@@ -138,7 +187,7 @@ export class BookingsService {
         },
         data: {
           status: BookingStatus.EXPIRED,
-          cancellationReason: 'Reservation hold expired',
+          cancellationReason: '5-minute reservation hold expired',
         },
       });
 
@@ -197,7 +246,10 @@ export class BookingsService {
     for (const b of expiredBookings) {
       expiredIds.push(b.id);
       const seats = this.getSeatsForBooking(b);
-      seatsByTier.set(b.ticketTierId, (seatsByTier.get(b.ticketTierId) ?? 0) + seats);
+      seatsByTier.set(
+        b.ticketTierId,
+        (seatsByTier.get(b.ticketTierId) ?? 0) + seats,
+      );
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -208,7 +260,7 @@ export class BookingsService {
         },
         data: {
           status: BookingStatus.EXPIRED,
-          cancellationReason: 'Reservation hold expired',
+          cancellationReason: '5-minute reservation hold expired',
         },
       });
 
@@ -246,12 +298,7 @@ export class BookingsService {
             maxAttendees: true,
             totalTicketsAvailable: true,
             allowGroupBookings: true,
-            organizer: {
-              select: {
-                id: true,
-                businessName: true,
-              },
-            },
+            organizer: { select: { id: true, businessName: true } },
           },
         }),
         tx.ticketTier.findUnique({
@@ -276,9 +323,7 @@ export class BookingsService {
         }),
       ]);
 
-      if (!event) {
-        throw new NotFoundException('Event not found');
-      }
+      if (!event) throw new NotFoundException('Event not found');
 
       const bookableStatuses: EventStatus[] = [
         EventStatus.APPROVED,
@@ -331,20 +376,16 @@ export class BookingsService {
         );
       }
 
-      const eventCaps = [
-        event.maxAttendees,
-        event.totalTicketsAvailable,
-      ].filter((cap): cap is number => cap !== null && cap !== undefined);
+      const eventCaps = [event.maxAttendees, event.totalTicketsAvailable].filter(
+        (cap): cap is number => cap !== null && cap !== undefined,
+      );
       const effectiveEventCap =
         eventCaps.length > 0 ? Math.min(...eventCaps) : null;
 
       if (effectiveEventCap !== null) {
         const totals = await tx.ticketTier.aggregate({
           where: { eventId: event.id },
-          _sum: {
-            quantitySold: true,
-            quantityReserved: true,
-          },
+          _sum: { quantitySold: true, quantityReserved: true },
         });
         const currentCommitted =
           (totals._sum.quantitySold ?? 0) + (totals._sum.quantityReserved ?? 0);
@@ -356,10 +397,7 @@ export class BookingsService {
       }
 
       const reservedTier = await tx.ticketTier.updateMany({
-        where: {
-          id: tier.id,
-          version: tier.version,
-        },
+        where: { id: tier.id, version: tier.version },
         data: {
           quantityReserved: { increment: seatsRequested },
           version: { increment: 1 },
@@ -432,9 +470,7 @@ export class BookingsService {
               pricingMode: true,
             },
           },
-          eTickets: {
-            orderBy: { ticketIndex: 'asc' },
-          },
+          eTickets: { orderBy: { ticketIndex: 'asc' } },
           payments: {
             select: {
               id: true,
@@ -456,13 +492,8 @@ export class BookingsService {
             quantitySold: { increment: seatsRequested },
           },
         });
-
         const eTickets = await this.issueTicketsForBooking(tx, created, []);
-
-        return {
-          ...created,
-          eTickets,
-        };
+        return { ...created, eTickets };
       }
 
       return created;
@@ -497,7 +528,6 @@ export class BookingsService {
       attendeeId,
       ...(filter?.eventId ? { eventId: filter.eventId } : {}),
     });
-
     return this.prisma.booking.findMany({
       where: {
         attendeeId,
@@ -577,7 +607,6 @@ export class BookingsService {
 
   async getBookingById(bookingId: string, userId: string, userRole?: string) {
     await this.expireSingleBookingIfDue(bookingId);
-
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
       select: {
@@ -596,14 +625,7 @@ export class BookingsService {
         cancelledAt: true,
         cancellationReason: true,
         createdAt: true,
-        attendee: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            phone: true,
-          },
-        },
+        attendee: { select: { id: true, fullName: true, email: true, phone: true } },
         event: {
           select: {
             id: true,
@@ -675,14 +697,11 @@ export class BookingsService {
       },
     });
 
-    if (!booking) {
-      throw new NotFoundException('Booking not found');
-    }
+    if (!booking) throw new NotFoundException('Booking not found');
 
     const isOwner = booking.attendeeId === userId;
     const isEventOrganizer = booking.event.organizer?.userId === userId;
     const isAdmin = userRole === 'ADMIN';
-
     if (!isOwner && !isEventOrganizer && !isAdmin) {
       throw new ForbiddenException('You do not have access to this booking');
     }
@@ -690,13 +709,8 @@ export class BookingsService {
     return booking;
   }
 
-  async cancelBooking(
-    bookingId: string,
-    userId: string,
-    dto?: CancelBookingDto,
-  ) {
+  async cancelBooking(bookingId: string, userId: string, dto?: CancelBookingDto) {
     await this.expireSingleBookingIfDue(bookingId);
-
     const updated = await this.prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { id: bookingId },
@@ -709,11 +723,7 @@ export class BookingsService {
           status: true,
         },
       });
-
-      if (!booking) {
-        throw new NotFoundException('Booking not found');
-      }
-
+      if (!booking) throw new NotFoundException('Booking not found');
       if (booking.attendeeId !== userId) {
         throw new ForbiddenException('You can only cancel your own bookings');
       }
@@ -722,7 +732,6 @@ export class BookingsService {
         BookingStatus.PENDING,
         BookingStatus.PAYMENT_RECEIVED,
       ];
-
       if (!cancellableStatuses.includes(booking.status)) {
         throw new BadRequestException(
           `Cannot cancel a booking with status ${booking.status}`,
@@ -741,12 +750,8 @@ export class BookingsService {
           bookingReference: true,
           status: true,
           cancelledAt: true,
-          event: {
-            select: { id: true, title: true },
-          },
-          ticketTier: {
-            select: { id: true, name: true },
-          },
+          event: { select: { id: true, title: true } },
+          ticketTier: { select: { id: true, name: true } },
         },
       });
 
@@ -754,12 +759,9 @@ export class BookingsService {
         const seatsToRelease = this.getSeatsForBooking(booking);
         await tx.ticketTier.update({
           where: { id: booking.ticketTierId },
-          data: {
-            quantityReserved: { decrement: seatsToRelease },
-          },
+          data: { quantityReserved: { decrement: seatsToRelease } },
         });
       }
-
       return cancelled;
     });
 
@@ -773,7 +775,6 @@ export class BookingsService {
         bookingReference: updated.bookingReference,
       },
     });
-
     return updated;
   }
 
@@ -789,27 +790,20 @@ export class BookingsService {
         select: {
           id: true,
           title: true,
-          organizer: {
-            select: { id: true, userId: true, businessName: true },
-          },
+          organizer: { select: { id: true, userId: true, businessName: true } },
         },
       }),
       this.expireStaleBookings({ eventId }),
     ]);
 
-    if (!event) {
-      throw new NotFoundException('Event not found');
-    }
-
+    if (!event) throw new NotFoundException('Event not found');
     const isOwner = event.organizer?.userId === userId;
     const isAdmin = userRole === 'ADMIN';
-
     if (!isOwner && !isAdmin) {
       throw new ForbiddenException('You do not own this event');
     }
 
     const search = filter?.q?.trim();
-
     const items = await this.prisma.booking.findMany({
       where: {
         eventId,
@@ -817,12 +811,7 @@ export class BookingsService {
         ...(search
           ? {
               OR: [
-                {
-                  bookingReference: {
-                    contains: search,
-                    mode: 'insensitive',
-                  },
-                },
+                { bookingReference: { contains: search, mode: 'insensitive' } },
                 {
                   attendee: {
                     is: {
@@ -838,12 +827,7 @@ export class BookingsService {
                   eTickets: {
                     some: {
                       OR: [
-                        {
-                          ticketCode: {
-                            contains: search,
-                            mode: 'insensitive',
-                          },
-                        },
+                        { ticketCode: { contains: search, mode: 'insensitive' } },
                         { guestName: { contains: search, mode: 'insensitive' } },
                       ],
                     },
@@ -864,14 +848,7 @@ export class BookingsService {
         expiresAt: true,
         confirmedAt: true,
         createdAt: true,
-        attendee: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            phone: true,
-          },
-        },
+        attendee: { select: { id: true, fullName: true, email: true, phone: true } },
         ticketTier: {
           select: {
             id: true,
@@ -916,7 +893,6 @@ export class BookingsService {
         const seats = this.getSeatsForBooking(b);
         acc.totalBookings += 1;
         acc.totalOccupants += seats;
-
         if (b.status === BookingStatus.CONFIRMED) {
           acc.confirmedBookings += 1;
           acc.confirmedOccupants += seats;
@@ -928,7 +904,6 @@ export class BookingsService {
           acc.pendingBookings += 1;
           acc.pendingOccupants += seats;
         }
-
         acc.checkedInTickets += b.eTickets.filter(
           (t) => t.status === TicketStatus.SCANNED,
         ).length;
@@ -946,12 +921,7 @@ export class BookingsService {
       },
     );
 
-    return {
-      eventId: event.id,
-      eventTitle: event.title,
-      summary,
-      items,
-    };
+    return { eventId: event.id, eventTitle: event.title, summary, items };
   }
 
   async checkInTicket(
@@ -961,7 +931,6 @@ export class BookingsService {
   ) {
     const code = dto.ticketCode?.trim();
     const token = dto.qrToken?.trim();
-
     if (!code && !token) {
       throw new BadRequestException(
         'Provide either ticketCode or qrToken to check in a ticket',
@@ -989,9 +958,7 @@ export class BookingsService {
             bookingReference: true,
             occupantsCount: true,
             status: true,
-            attendee: {
-              select: { id: true, fullName: true, phone: true },
-            },
+            attendee: { select: { id: true, fullName: true, phone: true } },
             ticketTier: {
               select: {
                 id: true,
@@ -1005,9 +972,7 @@ export class BookingsService {
               select: {
                 id: true,
                 title: true,
-                organizer: {
-                  select: { userId: true },
-                },
+                organizer: { select: { userId: true } },
               },
             },
           },
@@ -1015,10 +980,7 @@ export class BookingsService {
       },
     });
 
-    if (!ticket) {
-      throw new NotFoundException('E-ticket not found');
-    }
-
+    if (!ticket) throw new NotFoundException('E-ticket not found');
     if (dto.eventId && ticket.booking.eventId !== dto.eventId) {
       throw new BadRequestException(
         'This e-ticket belongs to a different event',
@@ -1032,26 +994,18 @@ export class BookingsService {
         'You are not authorized to check in tickets for this event',
       );
     }
-
     if (ticket.booking.status !== BookingStatus.CONFIRMED) {
       throw new BadRequestException(
         `Cannot check in ticket because booking is ${ticket.booking.status}`,
       );
     }
-
     if (ticket.status === TicketStatus.SCANNED) {
-      return {
-        alreadyCheckedIn: true,
-        ticket,
-      };
+      return { alreadyCheckedIn: true, ticket };
     }
 
     const updatedTicket = await this.prisma.eTicket.update({
       where: { id: ticket.id },
-      data: {
-        status: TicketStatus.SCANNED,
-        scannedAt: new Date(),
-      },
+      data: { status: TicketStatus.SCANNED, scannedAt: new Date() },
       select: {
         id: true,
         ticketIndex: true,
@@ -1065,9 +1019,7 @@ export class BookingsService {
             id: true,
             bookingReference: true,
             occupantsCount: true,
-            attendee: {
-              select: { id: true, fullName: true, phone: true },
-            },
+            attendee: { select: { id: true, fullName: true, phone: true } },
             ticketTier: {
               select: { id: true, name: true, groupCategory: true },
             },
@@ -1076,10 +1028,7 @@ export class BookingsService {
       },
     });
 
-    return {
-      alreadyCheckedIn: false,
-      ticket: updatedTicket,
-    };
+    return { alreadyCheckedIn: false, ticket: updatedTicket };
   }
 
   async confirmBookingPayment(
@@ -1099,16 +1048,13 @@ export class BookingsService {
           occupantsCount: true,
           totalAmountKes: true,
           status: true,
-          eTickets: {
-            select: { ticketIndex: true },
-          },
+          eTickets: { select: { ticketIndex: true } },
         },
       });
 
       if (!booking) {
         throw new NotFoundException('Booking not found for payment confirmation');
       }
-
       const seatsCount = this.getSeatsForBooking(booking);
 
       if (booking.status === BookingStatus.CONFIRMED) {
@@ -1117,18 +1063,12 @@ export class BookingsService {
           booking,
           booking.eTickets,
         );
-        return {
-          ...booking,
-          eTickets,
-        };
+        return { ...booking, eTickets };
       }
 
       const confirmed = await tx.booking.update({
         where: { id: booking.id },
-        data: {
-          status: BookingStatus.CONFIRMED,
-          confirmedAt: new Date(),
-        },
+        data: { status: BookingStatus.CONFIRMED, confirmedAt: new Date() },
         select: {
           id: true,
           bookingReference: true,
@@ -1154,9 +1094,7 @@ export class BookingsService {
       } else if (booking.status === BookingStatus.EXPIRED) {
         await tx.ticketTier.update({
           where: { id: booking.ticketTierId },
-          data: {
-            quantitySold: { increment: seatsCount },
-          },
+          data: { quantitySold: { increment: seatsCount } },
         });
       }
 
@@ -1165,16 +1103,182 @@ export class BookingsService {
         booking,
         booking.eTickets,
       );
-
-      return {
-        ...confirmed,
-        eTickets,
-      };
+      return { ...confirmed, eTickets };
     };
 
-    if (txClient) {
-      return run(txClient);
-    }
+    if (txClient) return run(txClient);
     return this.prisma.$transaction(run);
+  }
+
+  async verifyPaymentBySms(bookingId: string, userId: string, smsText: string) {
+    if (!smsText || !smsText.trim()) {
+      throw new BadRequestException(
+        'Please paste your M-Pesa confirmation message before verifying.',
+      );
+    }
+
+    const parsed = this.parseMpesaSms(smsText);
+    const receiptCode = parsed.receiptCode;
+    const amountKes = parsed.amountKes;
+
+    if (!receiptCode) {
+      throw new BadRequestException(
+        'Could not find a valid M-Pesa transaction code in the pasted message.',
+      );
+    }
+    if (amountKes === null) {
+      throw new BadRequestException(
+        'Could not find a valid KES amount in the pasted M-Pesa message.',
+      );
+    }
+
+    const verifiedAmountKes: number = amountKes;
+    const redirectTo = `/tickets?bookingId=${encodeURIComponent(bookingId)}`;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.findUnique({
+        where: { id: bookingId },
+        include: {
+          ticketTier: true,
+          event: true,
+          attendee: { select: { id: true, phone: true } },
+          eTickets: { select: { ticketIndex: true } },
+        },
+      });
+
+      if (!booking || booking.attendeeId !== userId) {
+        throw new NotFoundException('Booking not found.');
+      }
+
+      const now = new Date();
+      const seatsCount = this.getSeatsForBooking(booking);
+
+      if (booking.status === BookingStatus.PENDING && booking.expiresAt <= now) {
+        await tx.booking.update({
+          where: { id: booking.id },
+          data: {
+            status: BookingStatus.EXPIRED,
+            cancellationReason: '5-minute reservation hold expired',
+          },
+        });
+        await tx.ticketTier.update({
+          where: { id: booking.ticketTierId },
+          data: { quantityReserved: { decrement: seatsCount } },
+        });
+        throw new BadRequestException(
+          'Your 5-minute reservation expired and the seats were released.',
+        );
+      }
+
+      if (booking.status === BookingStatus.CONFIRMED) {
+        await this.issueTicketsForBooking(tx, booking, booking.eTickets);
+        return {
+          status: BookingStatus.CONFIRMED,
+          receiptCode,
+          message:
+            'Transaction & booking complete — proceed to your tickets page.',
+          redirectTo,
+          alreadyConfirmed: true,
+          bookingReference: booking.bookingReference,
+          eventTitle: booking.event.title,
+          eventId: booking.event.id,
+        };
+      }
+
+      if (booking.status !== BookingStatus.PENDING) {
+        throw new BadRequestException(
+          `Cannot verify payment for a booking in ${booking.status} state.`,
+        );
+      }
+
+      if (Math.abs(verifiedAmountKes - booking.totalAmountKes) > 0.01) {
+        throw new BadRequestException(
+          `Message amount (KES ${verifiedAmountKes.toLocaleString()}) does not match booking total (KES ${booking.totalAmountKes.toLocaleString()}).`,
+        );
+      }
+
+      const accountPhone = this.normalizeKenyanPhone(booking.attendee?.phone);
+      if (accountPhone && parsed.phones.length > 0) {
+        const matchesPhone = parsed.phones.includes(accountPhone);
+        if (!matchesPhone) {
+          throw new BadRequestException(
+            'Phone number in the M-Pesa message does not match your account phone number.',
+          );
+        }
+      }
+
+      const duplicateReceipt = await tx.payment.findFirst({
+        where: {
+          mpesaReceipt: receiptCode,
+          bookingId: { not: booking.id },
+        },
+        select: { id: true },
+      });
+      if (duplicateReceipt) {
+        throw new ConflictException(
+          'This M-Pesa transaction code has already been used.',
+        );
+      }
+
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: { status: BookingStatus.CONFIRMED, confirmedAt: now },
+      });
+
+      await tx.payment.create({
+        data: {
+          bookingId: booking.id,
+          paymentType: 'TICKET_PAYMENT',
+          method: 'MPESA_C2B',
+          amountKes: booking.totalAmountKes,
+          mpesaReceipt: receiptCode,
+          status: 'SUCCESS',
+          processedAt: now,
+        },
+      });
+
+      await this.issueTicketsForBooking(tx, booking, booking.eTickets);
+      await tx.ticketTier.update({
+        where: { id: booking.ticketTierId },
+        data: {
+          quantityReserved: { decrement: seatsCount },
+          quantitySold: { increment: seatsCount },
+        },
+      });
+
+      return {
+        status: BookingStatus.CONFIRMED,
+        receiptCode,
+        message:
+          'Transaction & booking complete — proceed to your tickets page.',
+        redirectTo,
+        alreadyConfirmed: false,
+        bookingReference: booking.bookingReference,
+        eventTitle: booking.event.title,
+        eventId: booking.event.id,
+      };
+    });
+
+    if (!result.alreadyConfirmed) {
+      await this.notifySafely({
+        userId,
+        type: 'BOOKING_CONFIRMED',
+        title: 'Transaction & Booking Complete',
+        message: `Your payment for ${result.eventTitle} (${result.bookingReference}) is verified. Proceed to your tickets page.`,
+        metadata: {
+          bookingId,
+          bookingReference: result.bookingReference,
+          receiptCode: result.receiptCode,
+          eventId: result.eventId,
+        },
+      });
+    }
+
+    return {
+      status: result.status,
+      receiptCode: result.receiptCode,
+      message: result.message,
+      redirectTo: result.redirectTo,
+    };
   }
 }

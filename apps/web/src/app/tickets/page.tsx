@@ -9,6 +9,7 @@ import {
   type BookingRecord,
 } from '@/lib/bookingsApi';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
+import { Button } from '@/components/ui';
 
 export interface TicketPassEntry {
   booking: BookingRecord;
@@ -109,6 +110,142 @@ const TicketPassInspector = dynamic(
     ),
   },
 );
+
+interface TicketPassListProps {
+  passes: TicketPassEntry[];
+  selectedTicketCode: string;
+  onSelectTicket: (ticketCode: string) => void;
+  formatDateTime: (iso?: string | null) => string;
+  formatGroupCategoryLabel: (category?: string | null) => string;
+}
+
+function TicketPassListImpl({
+  passes,
+  selectedTicketCode,
+  onSelectTicket,
+  formatDateTime,
+  formatGroupCategoryLabel,
+}: TicketPassListProps) {
+  const { t } = useLanguage();
+
+  return (
+    <section className="lg:col-span-2 space-y-4">
+      {passes.map(
+        ({ booking, ticket, passIndex, totalPassesInBooking }) => {
+          const isSelected = selectedTicketCode === ticket.ticketCode;
+          const isGroup = Boolean(booking.ticketTier.isGroupSubgroup);
+          const occupants =
+            typeof booking.occupantsCount === 'number' &&
+            booking.occupantsCount > 0
+              ? booking.occupantsCount
+              : booking.quantity;
+
+          return (
+            <article
+              key={ticket.id || ticket.ticketCode}
+              role="button"
+              tabIndex={0}
+              aria-pressed={isSelected}
+              onClick={() => onSelectTicket(ticket.ticketCode)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectTicket(ticket.ticketCode);
+                }
+              }}
+              className={`cursor-pointer rounded-2xl border p-5 transition-all space-y-3 focus:outline-none focus:ring-2 focus:ring-[#29ABE2] ${
+                isSelected
+                  ? 'border-[#29ABE2] bg-[#E0F2FE]/60 dark:bg-[#29ABE2]/15'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A]'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                      {ticket.ticketCode} /{' '}
+                      {t('tickets.refPrefix', {
+                        ref: booking.bookingReference,
+                      })}
+                    </p>
+                    {totalPassesInBooking > 1 && (
+                      <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-[#2B2B2B] px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                        {t('tickets.passBadge', {
+                          index: passIndex,
+                          total: totalPassesInBooking,
+                        })}
+                      </span>
+                    )}
+                    {isGroup && (
+                      <span className="inline-flex items-center rounded-full bg-[#E0F2FE] dark:bg-[#29ABE2]/20 px-2.5 py-0.5 text-[11px] font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
+                        {formatGroupCategoryLabel(
+                          booking.ticketTier.groupCategory,
+                        )}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                    {booking.event.title}
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-300">
+                    {booking.event.venueName}, {booking.event.county} /{' '}
+                    {formatDateTime(booking.event.startsAt)}
+                  </p>
+                </div>
+                <span className="rounded-full border border-[#29ABE2]/40 bg-white dark:bg-[#2B2B2B] px-3 py-1 text-xs font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
+                  {ticket.status}
+                </span>
+              </div>
+
+              <div className="text-xs text-slate-600 dark:text-slate-300 flex flex-wrap gap-x-4 gap-y-1">
+                <span>
+                  {t('tickets.meta.tier')}{' '}
+                  <strong className="text-slate-900 dark:text-white">
+                    {booking.ticketTier.name}
+                  </strong>
+                </span>
+                <span>
+                  {t('tickets.meta.units')}{' '}
+                  <strong className="text-slate-900 dark:text-white">
+                    {booking.quantity}
+                  </strong>
+                </span>
+                <span>
+                  {t('tickets.meta.occupants')}{' '}
+                  <strong className="text-slate-900 dark:text-white">
+                    {occupants}
+                  </strong>
+                </span>
+                {ticket.guestName && (
+                  <span>
+                    {t('tickets.meta.guest')}{' '}
+                    <strong className="text-slate-900 dark:text-white">
+                      {ticket.guestName}
+                    </strong>
+                  </span>
+                )}
+              </div>
+            </article>
+          );
+        },
+      )}
+    </section>
+  );
+}
+
+const TicketPassList = dynamic(() => Promise.resolve(TicketPassListImpl), {
+  ssr: false,
+  loading: () => (
+    <section className="lg:col-span-2 space-y-4">
+      {Array.from({ length: 2 }).map((_, idx) => (
+        <div
+          key={idx}
+          className="h-36 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] p-5 animate-pulse"
+        />
+      ))}
+    </section>
+  ),
+});
 
 export default function TicketsPage() {
   const { t, language } = useLanguage();
@@ -226,6 +363,8 @@ export default function TicketsPage() {
     );
   }, [allPasses, selectedTicketCode]);
 
+  const activeTicketCode = selectedEntry?.ticket.ticketCode ?? '';
+
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] transition-colors">
       <div className="container-fluid py-8 space-y-6">
@@ -256,105 +395,26 @@ export default function TicketsPage() {
             <p className="text-sm text-slate-600 dark:text-slate-300">
               {t('tickets.empty')}
             </p>
-            <Link href="/bookings" className="btn-coddy inline-block text-sm">
-              {t('tickets.goToBookings')}
+            <Link href="/bookings" className="inline-block">
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                className="bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none text-sm font-semibold"
+              >
+                {t('tickets.goToBookings')}
+              </Button>
             </Link>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <section className="lg:col-span-2 space-y-4">
-              {allPasses.map(
-                ({ booking, ticket, passIndex, totalPassesInBooking }) => {
-                  const isSelected =
-                    selectedEntry?.ticket.ticketCode === ticket.ticketCode;
-                  const isGroup = Boolean(booking.ticketTier.isGroupSubgroup);
-                  const occupants =
-                    typeof booking.occupantsCount === 'number' &&
-                    booking.occupantsCount > 0
-                      ? booking.occupantsCount
-                      : booking.quantity;
-
-                  return (
-                    <article
-                      key={ticket.id || ticket.ticketCode}
-                      onClick={() => setSelectedTicketCode(ticket.ticketCode)}
-                      className={`cursor-pointer rounded-2xl border p-5 transition-all space-y-3 ${
-                        isSelected
-                          ? 'border-[#29ABE2] bg-[#E0F2FE]/60 dark:bg-[#29ABE2]/15'
-                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A]'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                              {ticket.ticketCode} /{' '}
-                              {t('tickets.refPrefix', {
-                                ref: booking.bookingReference,
-                              })}
-                            </p>
-                            {totalPassesInBooking > 1 && (
-                              <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-[#2B2B2B] px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                                {t('tickets.passBadge', {
-                                  index: passIndex,
-                                  total: totalPassesInBooking,
-                                })}
-                              </span>
-                            )}
-                            {isGroup && (
-                              <span className="inline-flex items-center rounded-full bg-[#E0F2FE] dark:bg-[#29ABE2]/20 px-2.5 py-0.5 text-[11px] font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
-                                {formatGroupCategoryLabel(
-                                  booking.ticketTier.groupCategory,
-                                )}
-                              </span>
-                            )}
-                          </div>
-                          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                            {booking.event.title}
-                          </h2>
-                          <p className="text-xs text-slate-500 dark:text-slate-300">
-                            {booking.event.venueName}, {booking.event.county} /{' '}
-                            {formatDateTime(booking.event.startsAt)}
-                          </p>
-                        </div>
-                        <span className="rounded-full border border-[#29ABE2]/40 bg-white dark:bg-[#2B2B2B] px-3 py-1 text-xs font-semibold text-[#1A8CC4] dark:text-[#29ABE2]">
-                          {ticket.status}
-                        </span>
-                      </div>
-
-                      <div className="text-xs text-slate-600 dark:text-slate-300 flex flex-wrap gap-x-4 gap-y-1">
-                        <span>
-                          {t('tickets.meta.tier')}{' '}
-                          <strong className="text-slate-900 dark:text-white">
-                            {booking.ticketTier.name}
-                          </strong>
-                        </span>
-                        <span>
-                          {t('tickets.meta.units')}{' '}
-                          <strong className="text-slate-900 dark:text-white">
-                            {booking.quantity}
-                          </strong>
-                        </span>
-                        <span>
-                          {t('tickets.meta.occupants')}{' '}
-                          <strong className="text-slate-900 dark:text-white">
-                            {occupants}
-                          </strong>
-                        </span>
-                        {ticket.guestName && (
-                          <span>
-                            {t('tickets.meta.guest')}{' '}
-                            <strong className="text-slate-900 dark:text-white">
-                              {ticket.guestName}
-                            </strong>
-                          </span>
-                        )}
-                      </div>
-                    </article>
-                  );
-                },
-              )}
-            </section>
+            <TicketPassList
+              passes={allPasses}
+              selectedTicketCode={activeTicketCode}
+              onSelectTicket={setSelectedTicketCode}
+              formatDateTime={formatDateTime}
+              formatGroupCategoryLabel={formatGroupCategoryLabel}
+            />
 
             <TicketPassInspector
               selectedEntry={selectedEntry}

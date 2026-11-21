@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Building2,
@@ -8,7 +10,6 @@ import {
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
-  Loader2,
   AlertCircle,
   FileText,
   ShieldCheck,
@@ -21,12 +22,134 @@ import {
   KycDocument,
 } from '@/lib/organizerApi';
 import { toast } from '@/lib/toast';
-import { DocumentUploader } from '@/components/ui/DocumentUploader';
-import { FullPageLoader } from '@/components/ui';
+import { Button, FullPageLoader } from '@/components/ui';
+
+const DocumentUploader = dynamic(
+  () =>
+    import('@/components/ui/DocumentUploader').then((mod) => mod.DocumentUploader),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-28 w-full rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 animate-pulse" />
+    ),
+  },
+);
+
+interface BusinessFormState {
+  businessName: string;
+  organizerType: OrganizerType;
+  county: string;
+  bio: string;
+  phone: string;
+  kraPin: string;
+}
+
+interface PaymentFormState {
+  methodType: PaymentMethodType;
+  shortcode: string;
+  accountNumber: string;
+  phoneNumber: string;
+  displayLabel: string;
+}
+
+function ReviewSummarySectionImpl({
+  business,
+  documents,
+  payment,
+}: {
+  business: BusinessFormState;
+  documents: KycDocument[];
+  payment: PaymentFormState;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-3 mb-2">
+        <CheckCircle2 className="w-5 h-5 text-gold" />
+        <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">
+          Review &amp; Submit
+        </h2>
+      </div>
+
+      <div className="space-y-4 text-sm">
+        <ReviewBlock title="Business">
+          <p>
+            <strong>Name:</strong> {business.businessName}
+          </p>
+          <p>
+            <strong>Type:</strong> {business.organizerType}
+          </p>
+          <p>
+            <strong>Phone:</strong> {business.phone}
+          </p>
+          <p>
+            <strong>KRA PIN:</strong>{' '}
+            <span className="font-mono">{business.kraPin}</span>
+          </p>
+        </ReviewBlock>
+
+        <ReviewBlock title="Documents">
+          <ul className="space-y-1">
+            {documents.map((d, i) => (
+              <li key={i}>
+                <strong>{d.type.replace('_', ' ')}:</strong> {d.fileName}
+              </li>
+            ))}
+          </ul>
+        </ReviewBlock>
+
+        <ReviewBlock title="Payment">
+          <p>
+            <strong>Method:</strong> {payment.methodType}
+          </p>
+          {payment.shortcode && (
+            <p>
+              <strong>Shortcode:</strong> {payment.shortcode}
+            </p>
+          )}
+          {payment.accountNumber && (
+            <p>
+              <strong>Account:</strong> {payment.accountNumber}
+            </p>
+          )}
+          {payment.phoneNumber && (
+            <p>
+              <strong>Phone:</strong> {payment.phoneNumber}
+            </p>
+          )}
+        </ReviewBlock>
+      </div>
+    </>
+  );
+}
+
+const ReviewSummarySection = dynamic(
+  () => Promise.resolve(ReviewSummarySectionImpl),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-4">
+        <div className="h-28 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+        <div className="h-24 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+      </div>
+    ),
+  },
+);
 
 const COUNTIES = [
-  'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Malindi',
-  'Kitale', 'Garissa', 'Kakamega', 'Nyeri', 'Meru', 'Machakos', 'Kisii',
+  'Nairobi',
+  'Mombasa',
+  'Kisumu',
+  'Nakuru',
+  'Eldoret',
+  'Thika',
+  'Malindi',
+  'Kitale',
+  'Garissa',
+  'Kakamega',
+  'Nyeri',
+  'Meru',
+  'Machakos',
+  'Kisii',
 ];
 
 const TYPES: { value: OrganizerType; label: string }[] = [
@@ -54,9 +177,9 @@ export default function OrganizerOnboardingPage() {
 
   const [step, setStep] = useState(1);
 
-  const [business, setBusiness] = useState({
+  const [business, setBusiness] = useState<BusinessFormState>({
     businessName: '',
-    organizerType: 'INDIVIDUAL' as OrganizerType,
+    organizerType: 'INDIVIDUAL',
     county: 'Nairobi',
     bio: '',
     phone: '',
@@ -65,8 +188,8 @@ export default function OrganizerOnboardingPage() {
 
   const [documents, setDocuments] = useState<KycDocument[]>([]);
 
-  const [payment, setPayment] = useState({
-    methodType: 'PAYBILL' as PaymentMethodType,
+  const [payment, setPayment] = useState<PaymentFormState>({
+    methodType: 'PAYBILL',
     shortcode: '',
     accountNumber: '',
     phoneNumber: '',
@@ -81,14 +204,14 @@ export default function OrganizerOnboardingPage() {
       .then((p) => {
         setProfile(p);
       })
-      .catch(() => {}) // Removed toast error for load
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   const validateStep1 = () => {
     const e: Record<string, string> = {};
     if (!business.businessName.trim()) e.businessName = 'Required';
-    
+
     if (!business.phone.trim()) e.phone = 'Required';
     else if (!KENYAN_PHONE_REGEX.test(business.phone.trim()))
       e.phone = 'Invalid format';
@@ -170,13 +293,14 @@ export default function OrganizerOnboardingPage() {
           displayLabel: payment.displayLabel.trim() || undefined,
         },
       });
-      
-      // Simple success toast
+
       toast.success('Submitted for review');
       router.push('/organizer/profile');
-    } catch (err: any) {
-      // Simple error toast
-      toast.error('Failed to submit', err?.message);
+    } catch (err: unknown) {
+      toast.error(
+        'Failed to submit',
+        err instanceof Error ? err.message : undefined,
+      );
     } finally {
       setSaving(false);
     }
@@ -197,12 +321,12 @@ export default function OrganizerOnboardingPage() {
           <p className="text-sm text-slate-500 mb-6">
             Your organizer account is approved. You can start creating events.
           </p>
-          <a
+          <Link
             href="/organizer/dashboard"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
           >
             Go to Dashboard <ArrowRight className="w-4 h-4" />
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -217,7 +341,8 @@ export default function OrganizerOnboardingPage() {
           Organizer Onboarding
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Submit your business info, documents, and payment method for verification.
+          Submit your business info, documents, and payment method for
+          verification.
         </p>
       </div>
 
@@ -225,8 +350,12 @@ export default function OrganizerOnboardingPage() {
         <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-2xl p-4 flex gap-3">
           <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold text-sm text-red-700 dark:text-red-300 mb-1">Admin Feedback</p>
-            <p className="text-sm text-red-600 dark:text-red-400">{profile.kycNotes}</p>
+            <p className="font-bold text-sm text-red-700 dark:text-red-300 mb-1">
+              Admin Feedback
+            </p>
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {profile.kycNotes}
+            </p>
           </div>
         </div>
       )}
@@ -236,14 +365,32 @@ export default function OrganizerOnboardingPage() {
           const n = i + 1;
           return (
             <div key={n} className="flex items-center gap-2 flex-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${step >= n ? 'bg-brand-gradient text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                  step >= n
+                    ? 'bg-brand-gradient text-white'
+                    : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                }`}
+              >
                 {n}
               </div>
-              <span className={`text-xs font-semibold hidden sm:inline ${step >= n ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400'}`}>
+              <span
+                className={`text-xs font-semibold hidden sm:inline ${
+                  step >= n
+                    ? 'text-slate-800 dark:text-slate-100'
+                    : 'text-slate-400'
+                }`}
+              >
                 {label}
               </span>
               {n < STEPS.length && (
-                <div className={`flex-1 h-0.5 ${step > n ? 'bg-brand-gradient' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                <div
+                  className={`flex-1 h-0.5 ${
+                    step > n
+                      ? 'bg-brand-gradient'
+                      : 'bg-slate-200 dark:bg-slate-700'
+                  }`}
+                />
               )}
             </div>
           );
@@ -255,14 +402,18 @@ export default function OrganizerOnboardingPage() {
           <>
             <div className="flex items-center gap-3 mb-2">
               <Building2 className="w-5 h-5 text-gold" />
-              <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">Business Information</h2>
+              <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">
+                Business Information
+              </h2>
             </div>
 
             <Field label="Business / Organizer Name *" error={errors.businessName}>
               <input
                 type="text"
                 value={business.businessName}
-                onChange={(e) => setBusiness({ ...business, businessName: e.target.value })}
+                onChange={(e) =>
+                  setBusiness({ ...business, businessName: e.target.value })
+                }
                 className={inputCls(!!errors.businessName)}
               />
             </Field>
@@ -271,20 +422,35 @@ export default function OrganizerOnboardingPage() {
               <Field label="Organizer Type *">
                 <select
                   value={business.organizerType}
-                  onChange={(e) => setBusiness({ ...business, organizerType: e.target.value as OrganizerType })}
+                  onChange={(e) =>
+                    setBusiness({
+                      ...business,
+                      organizerType: e.target.value as OrganizerType,
+                    })
+                  }
                   className={inputCls(false)}
                 >
-                  {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  {TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
                 </select>
               </Field>
 
               <Field label="County *" error={errors.county}>
                 <select
                   value={business.county}
-                  onChange={(e) => setBusiness({ ...business, county: e.target.value })}
+                  onChange={(e) =>
+                    setBusiness({ ...business, county: e.target.value })
+                  }
                   className={inputCls(!!errors.county)}
                 >
-                  {COUNTIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {COUNTIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </select>
               </Field>
             </div>
@@ -295,10 +461,14 @@ export default function OrganizerOnboardingPage() {
                   type="text"
                   placeholder="0712345678"
                   value={business.phone}
-                  onChange={(e) => setBusiness({ ...business, phone: e.target.value })}
+                  onChange={(e) =>
+                    setBusiness({ ...business, phone: e.target.value })
+                  }
                   className={inputCls(!!errors.phone)}
                 />
-                <p className="text-[0.65rem] text-slate-400 mt-1">e.g. 0712345678</p>
+                <p className="text-[0.65rem] text-slate-400 mt-1">
+                  e.g. 0712345678
+                </p>
               </Field>
 
               <Field label="KRA PIN *" error={errors.kraPin}>
@@ -309,11 +479,18 @@ export default function OrganizerOnboardingPage() {
                     maxLength={11}
                     placeholder="A012345678K"
                     value={business.kraPin}
-                    onChange={(e) => setBusiness({ ...business, kraPin: e.target.value.toUpperCase() })}
+                    onChange={(e) =>
+                      setBusiness({
+                        ...business,
+                        kraPin: e.target.value.toUpperCase(),
+                      })
+                    }
                     className={inputCls(!!errors.kraPin) + ' pl-9 uppercase'}
                   />
                 </div>
-                <p className="text-[0.65rem] text-slate-400 mt-1">e.g. A012345678K</p>
+                <p className="text-[0.65rem] text-slate-400 mt-1">
+                  e.g. A012345678K
+                </p>
               </Field>
             </div>
 
@@ -321,7 +498,9 @@ export default function OrganizerOnboardingPage() {
               <textarea
                 rows={3}
                 value={business.bio}
-                onChange={(e) => setBusiness({ ...business, bio: e.target.value })}
+                onChange={(e) =>
+                  setBusiness({ ...business, bio: e.target.value })
+                }
                 className={inputCls(false) + ' resize-none'}
               />
             </Field>
@@ -332,7 +511,9 @@ export default function OrganizerOnboardingPage() {
           <>
             <div className="flex items-center gap-3 mb-2">
               <FileText className="w-5 h-5 text-gold" />
-              <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">KYC Documents</h2>
+              <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">
+                KYC Documents
+              </h2>
             </div>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
@@ -357,7 +538,11 @@ export default function OrganizerOnboardingPage() {
               onChange={setDocuments}
             />
 
-            {errors.kycDocuments && <p className="text-xs text-red-500 mt-2">{errors.kycDocuments}</p>}
+            {errors.kycDocuments && (
+              <p className="text-xs text-red-500 mt-2">
+                {errors.kycDocuments}
+              </p>
+            )}
           </>
         )}
 
@@ -365,11 +550,14 @@ export default function OrganizerOnboardingPage() {
           <>
             <div className="flex items-center gap-3 mb-2">
               <CreditCard className="w-5 h-5 text-gold" />
-              <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">Payment Method</h2>
+              <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">
+                Payment Method
+              </h2>
             </div>
 
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-              Where should attendee payments go? Admin will review this before it becomes active.
+              Where should attendee payments go? Admin will review this before it
+              becomes active.
             </p>
 
             <Field label="Method Type *">
@@ -386,21 +574,39 @@ export default function OrganizerOnboardingPage() {
                 }
                 className={inputCls(false)}
               >
-                {PAYMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                {PAYMENT_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
               </select>
             </Field>
 
-            {(payment.methodType === 'PAYBILL' || payment.methodType === 'TILL') && (
-              <Field 
-                label={payment.methodType === 'PAYBILL' ? 'Business Number *' : 'Till Number *'} 
+            {(payment.methodType === 'PAYBILL' ||
+              payment.methodType === 'TILL') && (
+              <Field
+                label={
+                  payment.methodType === 'PAYBILL'
+                    ? 'Business Number *'
+                    : 'Till Number *'
+                }
                 error={errors.shortcode}
               >
                 <input
                   type="text"
                   inputMode="numeric"
-                  placeholder={payment.methodType === 'PAYBILL' ? 'e.g. 400200' : 'e.g. 5030201'}
+                  placeholder={
+                    payment.methodType === 'PAYBILL'
+                      ? 'e.g. 400200'
+                      : 'e.g. 5030201'
+                  }
                   value={payment.shortcode}
-                  onChange={(e) => setPayment({ ...payment, shortcode: e.target.value.replace(/[^0-9]/g, '') })}
+                  onChange={(e) =>
+                    setPayment({
+                      ...payment,
+                      shortcode: e.target.value.replace(/[^0-9]/g, ''),
+                    })
+                  }
                   className={inputCls(!!errors.shortcode)}
                 />
               </Field>
@@ -412,19 +618,24 @@ export default function OrganizerOnboardingPage() {
                   type="text"
                   placeholder="e.g. Your Business Name"
                   value={payment.accountNumber}
-                  onChange={(e) => setPayment({ ...payment, accountNumber: e.target.value })}
+                  onChange={(e) =>
+                    setPayment({ ...payment, accountNumber: e.target.value })
+                  }
                   className={inputCls(!!errors.accountNumber)}
                 />
               </Field>
             )}
 
-            {(payment.methodType === 'POCHI' || payment.methodType === 'SEND_MONEY') && (
+            {(payment.methodType === 'POCHI' ||
+              payment.methodType === 'SEND_MONEY') && (
               <Field label="Phone Number *" error={errors.phoneNumber}>
                 <input
                   type="text"
                   placeholder="0712345678"
                   value={payment.phoneNumber}
-                  onChange={(e) => setPayment({ ...payment, phoneNumber: e.target.value })}
+                  onChange={(e) =>
+                    setPayment({ ...payment, phoneNumber: e.target.value })
+                  }
                   className={inputCls(!!errors.phoneNumber)}
                 />
               </Field>
@@ -435,7 +646,9 @@ export default function OrganizerOnboardingPage() {
                 type="text"
                 placeholder="e.g. Main M-Pesa"
                 value={payment.displayLabel}
-                onChange={(e) => setPayment({ ...payment, displayLabel: e.target.value })}
+                onChange={(e) =>
+                  setPayment({ ...payment, displayLabel: e.target.value })
+                }
                 className={inputCls(false)}
               />
             </Field>
@@ -443,91 +656,98 @@ export default function OrganizerOnboardingPage() {
         )}
 
         {step === 4 && (
-          <>
-            <div className="flex items-center gap-3 mb-2">
-              <CheckCircle2 className="w-5 h-5 text-gold" />
-              <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">Review & Submit</h2>
-            </div>
-
-            <div className="space-y-4 text-sm">
-              <ReviewBlock title="Business">
-                <p><strong>Name:</strong> {business.businessName}</p>
-                <p><strong>Type:</strong> {business.organizerType}</p>
-                <p><strong>Phone:</strong> {business.phone}</p>
-                <p><strong>KRA PIN:</strong> <span className="font-mono">{business.kraPin}</span></p>
-              </ReviewBlock>
-
-              <ReviewBlock title="Documents">
-                <ul className="space-y-1">
-                  {documents.map((d, i) => (
-                    <li key={i}><strong>{d.type.replace('_', ' ')}:</strong> {d.fileName}</li>
-                  ))}
-                </ul>
-              </ReviewBlock>
-
-              <ReviewBlock title="Payment">
-                <p><strong>Method:</strong> {payment.methodType}</p>
-                {payment.shortcode && <p><strong>Shortcode:</strong> {payment.shortcode}</p>}
-                {payment.accountNumber && <p><strong>Account:</strong> {payment.accountNumber}</p>}
-                {payment.phoneNumber && <p><strong>Phone:</strong> {payment.phoneNumber}</p>}
-              </ReviewBlock>
-            </div>
-          </>
+          <ReviewSummarySection
+            business={business}
+            documents={documents}
+            payment={payment}
+          />
         )}
       </div>
 
       <div className="flex justify-between gap-3 pt-2">
-        <button
+        <Button
+          type="button"
+          variant="outline"
+          size="md"
           onClick={() => setStep((s) => Math.max(1, s - 1))}
           disabled={step === 1}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          className="gap-2 px-5 py-2.5 rounded-lg border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold"
         >
           <ArrowLeft className="w-4 h-4" /> Back
-        </button>
+        </Button>
 
         {step < 4 ? (
-          <button
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
             onClick={goNext}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
+            className="gap-2 px-6 py-2.5 rounded-full bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none text-sm font-semibold"
           >
             Continue <ArrowRight className="w-4 h-4" />
-          </button>
+          </Button>
         ) : (
-          <button
-            onClick={handleSubmit}
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            isLoading={saving}
             disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-brand-gradient text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 transition-all"
+            onClick={handleSubmit}
+            className="gap-2 px-6 py-2.5 rounded-full bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none text-sm font-semibold"
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            {!saving && <CheckCircle2 className="w-4 h-4" />}
             {saving ? 'Submitting...' : 'Submit for Review'}
-          </button>
+          </Button>
         )}
       </div>
     </div>
   );
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5">{label}</label>
+      <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1.5">
+        {label}
+      </label>
       {children}
       {error && <p className="text-[0.7rem] text-red-500 mt-1">{error}</p>}
     </div>
   );
 }
 
-function ReviewBlock({ title, children }: { title: string; children: React.ReactNode }) {
+function ReviewBlock({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-      <p className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-2">{title}</p>
-      <div className="text-slate-700 dark:text-slate-300 space-y-1">{children}</div>
+      <p className="font-bold text-xs uppercase tracking-wider text-slate-500 mb-2">
+        {title}
+      </p>
+      <div className="text-slate-700 dark:text-slate-300 space-y-1">
+        {children}
+      </div>
     </div>
   );
 }
 
 function inputCls(hasError: boolean) {
   return `w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none transition-colors border ${
-    hasError ? 'border-red-500' : 'border-slate-200 dark:border-slate-700 focus:border-gold'
+    hasError
+      ? 'border-red-500'
+      : 'border-slate-200 dark:border-slate-700 focus:border-gold'
   }`;
 }

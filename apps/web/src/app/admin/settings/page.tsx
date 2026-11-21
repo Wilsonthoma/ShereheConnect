@@ -1,5 +1,27 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+
+function SettingsPlaceholderCardImpl() {
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 text-center">
+      <p className="text-sm text-slate-500 dark:text-slate-400">
+        This section will be built in a future phase.
+      </p>
+    </div>
+  );
+}
+
+const SettingsPlaceholderCard = dynamic(
+  () => Promise.resolve(SettingsPlaceholderCardImpl),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-24 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 animate-pulse" />
+    ),
+  },
+);
+
 export default function SettingsPage() {
   return (
     <div className="space-y-6">
@@ -11,11 +33,7 @@ export default function SettingsPage() {
           Coming soon.
         </p>
       </div>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 text-center">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          This section will be built in a future phase.
-        </p>
-      </div>
+      <SettingsPlaceholderCard />
     </div>
   );
 }

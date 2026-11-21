@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search, MapPin, Calendar, ChevronDown, Users } from 'lucide-react';
+import { Search, MapPin, Calendar, ChevronDown, Users, X } from 'lucide-react';
+import { Button } from '@/components/ui';
 import { publicEventsApi, type EventItem } from '@/lib/eventsApi';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
-import { FullPageLoader } from '@/components/ui';
 
 const CATEGORIES = [
   { code: 'FESTIVAL', labelKey: 'events.cat.festival' as const },
@@ -37,93 +37,89 @@ const COUNTIES = [
   'Kisii',
 ];
 
-const BANNER_SLIDES = [
-  {
-    src: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=1920&q=80',
-    alt: 'Festival crowd',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=1920&q=80',
-    alt: 'Concert stage',
-  },
-  {
-    src: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1920&q=80',
-    alt: 'Live music',
-  },
+const HERO_VIDEO_SOURCES = [
+  'https://videos.pexels.com/video-files/2022395/2022395-hd_1280_720_30fps.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-crowd-dancing-at-a-concert-with-lights-42937-large.mp4',
 ];
 
-function BannerCarouselImpl() {
-  const [current, setCurrent] = useState(0);
-  const pausedRef = useRef(false);
+const HERO_VIDEO_POSTER =
+  'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=1200&q=80';
+
+function getTierUnitPrice(
+  tier: NonNullable<EventItem['ticketTiers']>[number],
+): number {
+  const occupants =
+    typeof tier.occupantsPerUnit === 'number' && tier.occupantsPerUnit > 0
+      ? tier.occupantsPerUnit
+      : tier.groupCategory === 'COUPLE'
+        ? 2
+        : 1;
+  if (tier.isGroupSubgroup && tier.pricingMode === 'PER_OCCUPANT') {
+    return tier.priceKes * occupants;
+  }
+  return tier.priceKes;
+}
+
+function AmbientHeroVideoImpl() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [srcIndex, setSrcIndex] = useState(0);
 
   useEffect(() => {
-    if (BANNER_SLIDES.length <= 1) return;
-    const timer = window.setInterval(() => {
-      if (!pausedRef.current && document.visibilityState === 'visible') {
-        setCurrent((i) => (i + 1) % BANNER_SLIDES.length);
-      }
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, []);
+    const el = videoRef.current;
+    if (!el) return;
+    el.muted = true;
+    const promise = el.play();
+    if (promise && typeof promise.catch === 'function') {
+      promise.catch(() => {});
+    }
+  }, [srcIndex]);
+
+  const handleError = () => {
+    setSrcIndex((prev) =>
+      prev + 1 < HERO_VIDEO_SOURCES.length ? prev + 1 : prev,
+    );
+  };
 
   return (
-    <div
-      className="relative w-full overflow-hidden bg-slate-900"
-      onMouseEnter={() => {
-        pausedRef.current = true;
-      }}
-      onMouseLeave={() => {
-        pausedRef.current = false;
-      }}
-    >
-      {BANNER_SLIDES.map((slide, i) => (
-        <div
-          key={slide.src}
-          className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
-            i === current ? 'opacity-100 z-10' : 'opacity-0 z-0'
-          }`}
-          aria-hidden={i !== current}
-        >
-          <img
-            src={slide.src}
-            alt={slide.alt}
-            className="w-full h-full object-cover"
-            loading={i === 0 ? 'eager' : 'lazy'}
-            decoding="async"
-          />
-        </div>
-      ))}
-
-      <img
-        src={BANNER_SLIDES[0].src}
-        alt=""
-        className="w-full h-[160px] sm:h-[200px] md:h-[260px] object-cover invisible"
-        aria-hidden="true"
+    <div className="relative h-60 sm:h-72 md:h-80 w-full overflow-hidden">
+      <video
+        ref={videoRef}
+        key={HERO_VIDEO_SOURCES[srcIndex]}
+        src={HERO_VIDEO_SOURCES[srcIndex]}
+        poster={HERO_VIDEO_POSTER}
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="metadata"
+        onCanPlay={() => {
+          videoRef.current?.play().catch(() => {});
+        }}
+        onError={handleError}
+        className="w-full h-full object-cover scale-[1.03] opacity-85 dark:opacity-75"
       />
 
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 z-20">
-        {BANNER_SLIDES.map((_, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => setCurrent(i)}
-            aria-label={`Go to slide ${i + 1}`}
-            className={`h-2 rounded-full transition-all duration-300 ${
-              i === current
-                ? 'w-8 bg-gradient-to-r from-[#29ABE2] to-[#1A8CC4]'
-                : 'w-2 bg-white/60 hover:bg-white'
-            }`}
-          />
-        ))}
-      </div>
+      {/* Seamless horizontal & vertical edge fades blending into right content & page surface */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-slate-50/35 to-slate-50 dark:from-transparent dark:via-[#2B2B2B]/45 dark:to-[#2B2B2B]"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-50 via-transparent to-slate-50/70 dark:from-[#2B2B2B] dark:via-transparent dark:to-[#2B2B2B]/70"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-slate-50/80 to-transparent dark:from-[#2B2B2B]/80"
+      />
     </div>
   );
 }
 
-const BannerCarousel = dynamic(() => Promise.resolve(BannerCarouselImpl), {
+const AmbientHeroVideo = dynamic(() => Promise.resolve(AmbientHeroVideoImpl), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-[160px] sm:h-[200px] md:h-[260px] bg-slate-900" />
+    <div className="h-60 sm:h-72 md:h-80 w-full rounded-2xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse" />
   ),
 });
 
@@ -144,21 +140,17 @@ export default function EventsPage() {
 
   useEffect(() => {
     let active = true;
-    const controller = new AbortController();
 
     const timeout = window.setTimeout(async () => {
       setLoading(true);
       setError('');
       try {
-        const res = await publicEventsApi.list(
-          {
-            q: search.trim() || undefined,
-            categoryId: selectedCategory || undefined,
-            county: county || undefined,
-            limit: 50,
-          },
-          { signal: controller.signal },
-        );
+        const res = await publicEventsApi.list({
+          q: search.trim() || undefined,
+          categoryId: selectedCategory || undefined,
+          county: county || undefined,
+          limit: 50,
+        });
         if (!active) return;
         setEvents(res.items);
         setTotal(res.total);
@@ -175,7 +167,6 @@ export default function EventsPage() {
     return () => {
       active = false;
       window.clearTimeout(timeout);
-      controller.abort();
     };
   }, [search, selectedCategory, county, t]);
 
@@ -189,37 +180,63 @@ export default function EventsPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] transition-colors">
-      <section className="bg-gradient-to-br from-slate-900 to-[#2B2B2B] py-16 md:py-20">
-        <div className="container-fluid text-center">
-          <h1
-            style={{ fontFamily: "'Kaushan Script', cursive" }}
-            className="text-4xl sm:text-5xl text-white mb-4"
-          >
-            {t('events.hero.title')}
-          </h1>
-          <p className="text-lg text-white/75 mb-8 max-w-2xl mx-auto">
-            {t('events.hero.subtitle')}
-          </p>
-          <div className="max-w-2xl mx-auto">
-            <label htmlFor="events-search-input" className="sr-only">
-              {t('events.search.placeholder')}
-            </label>
-            <div className="flex items-center gap-3 bg-white dark:bg-[#3A3A3A] rounded-full shadow-2xl px-5 py-3 border border-transparent dark:border-slate-700">
-              <Search className="w-5 h-5 text-slate-400 dark:text-slate-400" />
-              <input
-                id="events-search-input"
-                type="text"
-                placeholder={t('events.search.placeholder')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="flex-1 bg-transparent outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400"
-              />
+      <section className="relative overflow-hidden bg-gradient-to-b from-[#E0F2FE]/60 via-slate-50 to-slate-50 dark:from-[#1E293B]/75 dark:via-[#2B2B2B] dark:to-[#2B2B2B] py-10 md:py-14">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#29ABE2]/10 via-transparent to-[#1A8CC4]/10"
+        />
+
+        <div className="container-fluid max-w-7xl relative">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
+            <div className="lg:col-span-6">
+              <AmbientHeroVideo />
+            </div>
+
+            <div className="lg:col-span-6 space-y-5 text-left relative z-10">
+              <div className="space-y-2">
+                <h1
+                  style={{ fontFamily: "'Kaushan Script', cursive" }}
+                  className="text-4xl sm:text-5xl text-slate-900 dark:text-white leading-tight"
+                >
+                  {t('events.hero.title')}
+                </h1>
+                <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300 max-w-xl leading-relaxed">
+                  {t('events.hero.subtitle')}
+                </p>
+              </div>
+
+              <div className="max-w-xl">
+                <label htmlFor="events-search-input" className="sr-only">
+                  {t('events.search.placeholder')}
+                </label>
+                <div className="flex items-center gap-3 bg-white dark:bg-[#3A3A3A] rounded-full shadow-2xl px-5 py-3 border border-transparent dark:border-slate-700 focus-within:border-[#29ABE2] transition-colors">
+                  <Search className="w-5 h-5 text-slate-400 dark:text-slate-400 shrink-0" />
+                  <input
+                    id="events-search-input"
+                    type="text"
+                    placeholder={t('events.search.placeholder')}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="flex-1 bg-transparent outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-400 min-w-0"
+                  />
+                  {search && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSearch('')}
+                      aria-label="Clear search"
+                      className="rounded-full p-1.5 h-auto min-w-0 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
-
-      <BannerCarousel />
 
       <section className="py-10 md:py-14">
         <div className="container-fluid max-w-7xl">
@@ -267,13 +284,15 @@ export default function EventsPage() {
               </div>
 
               {hasFilters && (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={clearFilters}
-                  className="text-sm text-slate-500 dark:text-slate-300 hover:text-[#1A8CC4] dark:hover:text-[#29ABE2] font-medium transition-colors px-2"
+                  className="text-sm text-slate-500 dark:text-slate-300 hover:text-[#1A8CC4] dark:hover:text-[#29ABE2] font-medium px-2 h-auto"
                 >
                   {t('events.filter.clear')}
-                </button>
+                </Button>
               )}
             </div>
 
@@ -288,7 +307,23 @@ export default function EventsPage() {
             )}
           </div>
 
-          {loading && <FullPageLoader message={t('events.loading')} />}
+          {loading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {Array.from({ length: 8 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="h-[380px] rounded-2xl bg-white dark:bg-[#3A3A3A] border border-slate-100 dark:border-slate-700 overflow-hidden animate-pulse"
+                >
+                  <div className="h-[240px] bg-slate-200 dark:bg-slate-700" />
+                  <div className="p-4 space-y-2.5">
+                    <div className="h-4 w-3/4 rounded bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-3 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700 mt-4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {error && (
             <div className="text-center py-20">
@@ -306,13 +341,15 @@ export default function EventsPage() {
                 {t('events.empty.subtitle')}
               </p>
               {hasFilters && (
-                <button
+                <Button
                   type="button"
+                  variant="primary"
+                  size="sm"
                   onClick={clearFilters}
-                  className="inline-flex items-center justify-center px-5 py-2 rounded-full bg-gradient-to-r from-[#29ABE2] to-[#1A8CC4] text-white text-sm font-semibold hover:-translate-y-0.5 hover:shadow-lg transition-all"
+                  className="bg-coddy-blue hover:bg-coddy-blue-hover text-white border-none rounded-full px-5 py-2 text-sm font-semibold"
                 >
                   {t('events.filter.clear')}
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -332,21 +369,6 @@ export default function EventsPage() {
       </section>
     </main>
   );
-}
-
-function getTierUnitPrice(
-  tier: NonNullable<EventItem['ticketTiers']>[number],
-): number {
-  const occupants =
-    typeof tier.occupantsPerUnit === 'number' && tier.occupantsPerUnit > 0
-      ? tier.occupantsPerUnit
-      : tier.groupCategory === 'COUPLE'
-        ? 2
-        : 1;
-  if (tier.isGroupSubgroup && tier.pricingMode === 'PER_OCCUPANT') {
-    return tier.priceKes * occupants;
-  }
-  return tier.priceKes;
 }
 
 function PublicEventCard({
@@ -404,6 +426,11 @@ function PublicEventCard({
   return (
     <Link
       href={`/events/${event.slug}`}
+      style={
+        eagerImage
+          ? undefined
+          : { contentVisibility: 'auto', containIntrinsicSize: '0 380px' }
+      }
       className="group relative flex flex-col h-full bg-white dark:bg-[#3A3A3A] rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05),0_2px_4px_-1px_rgba(0,0,0,0.03)] hover:shadow-[0_0_0_2px_#29ABE2,0_12px_20px_-8px_rgba(0,0,0,0.08)] hover:border-[#29ABE2] hover:-translate-y-1.5 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
     >
       <div className="relative w-full h-[220px] sm:h-[240px] md:h-[260px] shrink-0 overflow-hidden bg-slate-100 dark:bg-[#2B2B2B] z-[1]">
