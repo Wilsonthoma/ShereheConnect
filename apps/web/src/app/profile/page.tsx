@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   User,
@@ -24,12 +23,10 @@ import {
 } from '@/lib/validation';
 
 function ProfileContent() {
-  const router = useRouter();
   const { t } = useLanguage();
 
-  // Translation helper with English fallback
   const tr = (key: string, fallback: string): string => {
-    const value = t(key as any);
+    const value = t(key as never);
     return value === key ? fallback : value;
   };
 
@@ -40,7 +37,9 @@ function ProfileContent() {
     phone: '',
     email: '',
   });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<{ fullName?: string; phone?: string }>(
+    {},
+  );
 
   useEffect(() => {
     const u = getUser();
@@ -55,25 +54,22 @@ function ProfileContent() {
   }, []);
 
   const validate = (): boolean => {
-    const e: Record<string, string> = {};
+    const nextErrors: { fullName?: string; phone?: string } = {};
     const nameRes = validateFullName(form.fullName);
-    if (!nameRes.valid) e.fullName = nameRes.error || '';
+    if (!nameRes.valid && nameRes.error) nextErrors.fullName = nameRes.error;
     const phoneRes = validateKenyanPhone(form.phone);
-    if (!phoneRes.valid) e.phone = phoneRes.error || '';
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    if (!phoneRes.valid && phoneRes.error) nextErrors.phone = phoneRes.error;
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
-    if (saving) return;
+    if (saving || !validate()) return;
 
     setSaving(true);
     try {
       const token = getToken();
-      // NOTE: Backend endpoint for profile update doesn't exist yet.
-      // This is a placeholder call — will 404 until we build it.
       await api.patch(
         '/auth/profile',
         {
@@ -110,20 +106,13 @@ function ProfileContent() {
     }
   };
 
-  // ============================================
-  // LOADING STATE
-  // ============================================
   if (loading) {
     return <FullPageLoader message="Loading profile..." />;
   }
 
-  // ============================================
-  // MAIN
-  // ============================================
   return (
     <main className="min-h-screen bg-light dark:bg-slate-950 py-10 md:py-16 transition-colors">
       <div className="container-md max-w-2xl">
-        {/* Back link */}
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 hover:text-gold transition-colors mb-6"
@@ -132,7 +121,6 @@ function ProfileContent() {
           <span>{tr('profile.backToDashboard', 'Back to dashboard')}</span>
         </Link>
 
-        {/* Header */}
         <h1 className="heading-display heading-md text-brand-gradient mb-3">
           {tr('profile.title', 'My Profile')}
         </h1>
@@ -151,9 +139,6 @@ function ProfileContent() {
             transition-colors
           "
         >
-          {/* ============================================
-              EMAIL (read-only)
-          ============================================ */}
           <div>
             <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1.5 transition-colors">
               {tr('profile.email.label', 'Email Address')}
@@ -183,9 +168,6 @@ function ProfileContent() {
             </p>
           </div>
 
-          {/* ============================================
-              FULL NAME
-          ============================================ */}
           <div>
             <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1.5 transition-colors">
               {tr('profile.fullName.label', 'Full Name')}
@@ -202,8 +184,11 @@ function ProfileContent() {
                 type="text"
                 value={form.fullName}
                 onChange={(e) => {
-                  setForm({ ...form, fullName: e.target.value });
-                  setErrors({ ...errors, fullName: '' });
+                  const fullName = e.target.value;
+                  setForm((prev) => ({ ...prev, fullName }));
+                  if (errors.fullName) {
+                    setErrors((prev) => ({ ...prev, fullName: undefined }));
+                  }
                 }}
                 autoComplete="name"
                 className="flex-1 bg-transparent outline-none text-sm text-slate-900 dark:text-slate-100 min-w-0"
@@ -217,9 +202,6 @@ function ProfileContent() {
             )}
           </div>
 
-          {/* ============================================
-              PHONE
-          ============================================ */}
           <div>
             <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1.5 transition-colors">
               {tr('profile.phone.label', 'Phone Number')}
@@ -236,8 +218,11 @@ function ProfileContent() {
                 type="tel"
                 value={form.phone}
                 onChange={(e) => {
-                  setForm({ ...form, phone: e.target.value });
-                  setErrors({ ...errors, phone: '' });
+                  const phone = e.target.value;
+                  setForm((prev) => ({ ...prev, phone }));
+                  if (errors.phone) {
+                    setErrors((prev) => ({ ...prev, phone: undefined }));
+                  }
                 }}
                 autoComplete="tel"
                 className="flex-1 bg-transparent outline-none text-sm text-slate-900 dark:text-slate-100 min-w-0"
@@ -251,9 +236,6 @@ function ProfileContent() {
             )}
           </div>
 
-          {/* ============================================
-              ACTIONS
-          ============================================ */}
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
               type="submit"

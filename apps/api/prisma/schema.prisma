@@ -254,6 +254,7 @@ model Subscription {
   payments  Payment[]
 
   @@index([organizerId])
+  @@index([organizerId, status])
   @@index([status])
   @@index([currentPeriodEnd])
   @@map("subscriptions")
@@ -279,6 +280,7 @@ model PaymentMethod {
 
   @@index([organizerId])
   @@index([organizerId, isActive])
+  @@index([organizerId, isActive, isDefault])
   @@map("payment_methods")
 }
 
@@ -336,6 +338,8 @@ model Event {
 
   @@index([organizerId])
   @@index([status])
+  @@index([status, startsAt])
+  @@index([status, isFeatured, startsAt])
   @@index([startsAt])
   @@index([county])
   @@index([categoryId])
@@ -384,6 +388,7 @@ model TicketTier {
 
   @@index([eventId])
   @@index([eventId, isActive])
+  @@index([eventId, isActive, sortOrder])
   @@index([eventId, isGroupSubgroup])
   @@map("ticket_tiers")
 }
@@ -416,8 +421,11 @@ model Booking {
 
   @@index([bookingReference])
   @@index([attendeeId])
+  @@index([attendeeId, createdAt])
   @@index([eventId])
   @@index([status])
+  @@index([status, expiresAt])
+  @@index([expiresAt])
   @@index([ticketTierId])
   @@map("bookings")
 }
@@ -449,6 +457,7 @@ model Payment {
   @@index([bookingId])
   @@index([subscriptionId])
   @@index([mpesaReceipt])
+  @@index([billReference])
   @@index([status])
   @@index([paymentType])
   @@index([checkoutRequestId])
@@ -503,6 +512,7 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, readAt])
   @@index([status])
   @@map("notifications")
 }
@@ -549,4 +559,4 @@ model LoginSession {
   @@index([userId, isActive])
   @@index([createdAt])
   @@map("login_sessions")
-}
+} m& rs

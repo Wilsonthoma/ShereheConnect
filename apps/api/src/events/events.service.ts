@@ -3,30 +3,49 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventFilterDto } from './dto/event-filter.dto';
+
+const COMPLETION_SWEEP_COOLDOWN_MS = 30_000;
 
 @Injectable()
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
+  private lastCompletionSweepAt = 0;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
+
+  private async markExpiredEventsCompleted(): Promise<void> {
+    const nowMs = Date.now();
+    if (nowMs - this.lastCompletionSweepAt < COMPLETION_SWEEP_COOLDOWN_MS) {
+      return;
+    }
+    this.lastCompletionSweepAt = nowMs;
+
+    try {
+      await this.prisma.event.updateMany({
+        where: {
+          status: { in: ['LIVE', 'ONGOING'] },
+          endsAt: { lt: new Date(nowMs) },
+        },
+        data: { status: 'COMPLETED' },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed marking expired events completed: ${(err as Error).message}`,
+      );
+    }
+  }
 
   /** Public: list live events with filters */
   async findLive(filter: EventFilterDto) {
-    const limit = filter.limit ?? 20;
-    const offset = filter.offset ?? 0;
+    const limit = Math.min(Math.max(filter.limit ?? 20, 1), 100);
+    const offset = Math.max(filter.offset ?? 0, 0);
 
-    // 1. Automatically mark expired events as COMPLETED
-    await this.prisma.event.updateMany({
-      where: {
-        status: { in: ['LIVE', 'ONGOING'] },
-        endsAt: { lt: new Date() },
-      },
-      data: { status: 'COMPLETED' },
-    });
+    await this.markExpiredEventsCompleted();
 
-    const where: any = {
+    const where: Prisma.EventWhereInput = {
       status: { in: ['LIVE', 'ONGOING'] },
       // Block events from suspended or deleted organizers
       organizer: {
@@ -37,11 +56,14 @@ export class EventsService {
     };
 
     if (filter.q) {
-      where.OR = [
-        { title: { contains: filter.q, mode: 'insensitive' } },
-        { description: { contains: filter.q, mode: 'insensitive' } },
-        { venueName: { contains: filter.q, mode: 'insensitive' } },
-      ];
+      const q = filter.q.trim();
+      if (q) {
+        where.OR = [
+          { title: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+          { venueName: { contains: q, mode: 'insensitive' } },
+        ];
+      }
     }
     if (filter.categoryId) where.categoryId = filter.categoryId;
     if (filter.county) where.county = filter.county;
@@ -53,14 +75,31 @@ export class EventsService {
         orderBy: { startsAt: 'asc' },
         take: limit,
         skip: offset,
-        include: {
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          coverImageUrl: true,
+          venueName: true,
+          county: true,
+          startsAt: true,
+          endsAt: true,
+          status: true,
+          allowGroupBookings: true,
+          isFeatured: true,
           organizer: {
             select: {
               businessName: true,
               logoUrl: true,
             },
           },
-          category: { select: { code: true, name: true } },
+          category: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
           ticketTiers: {
             where: { isActive: true },
             orderBy: { sortOrder: 'asc' },
@@ -97,7 +136,27 @@ export class EventsService {
           },
         },
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        coverImageUrl: true,
+        galleryUrls: true,
+        venueName: true,
+        address: true,
+        county: true,
+        latitude: true,
+        longitude: true,
+        startsAt: true,
+        endsAt: true,
+        timezone: true,
+        status: true,
+        maxAttendees: true,
+        totalTicketsAvailable: true,
+        allowGroupBookings: true,
+        isFeatured: true,
+        eventFeatures: true,
         organizer: {
           select: {
             businessName: true,
@@ -108,10 +167,32 @@ export class EventsService {
             averageRating: true,
           },
         },
-        category: { select: { code: true, name: true } },
+        category: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
         ticketTiers: {
           where: { isActive: true },
           orderBy: { sortOrder: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            priceKes: true,
+            quantityTotal: true,
+            quantitySold: true,
+            quantityReserved: true,
+            isGroupSubgroup: true,
+            groupCategory: true,
+            occupantsPerUnit: true,
+            pricingMode: true,
+            salesStartAt: true,
+            salesEndAt: true,
+            sortOrder: true,
+          },
         },
       },
     });
@@ -132,7 +213,8 @@ export class EventsService {
       .replace(/(^-|-$)/g, '')
       .slice(0, 80);
 
-    let slug = `${base}-${new Date().getFullYear()}`;
+    const year = new Date().getFullYear();
+    let slug = `${base}-${year}`;
     let attempt = 0;
 
     while (attempt < 5) {
@@ -142,9 +224,7 @@ export class EventsService {
       });
       if (!existing) return slug;
       attempt++;
-      slug = `${base}-${new Date().getFullYear()}-${Math.random()
-        .toString(36)
-        .slice(2, 6)}`;
+      slug = `${base}-${year}-${Math.random().toString(36).slice(2, 6)}`;
     }
 
     return `${base}-${Date.now().toString(36)}`;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { bookingsApi, type BookingRecord } from '@/lib/bookingsApi';
@@ -131,55 +131,81 @@ export default function BookingPaymentPage() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [checkingNow, setCheckingNow] = useState(false);
 
-  const formatKes = (amount: number) =>
-    `KES ${Math.max(0, amount).toLocaleString(localeTag)}`;
+  const copyTimeoutRef = useRef<number | null>(null);
+  const inFlightRef = useRef(false);
 
-  async function copyValue(key: string, value: string) {
+  const numberFormatter = useMemo(
+    () => new Intl.NumberFormat(localeTag),
+    [localeTag],
+  );
+
+  const formatKes = useCallback(
+    (amount: number) => `KES ${numberFormatter.format(Math.max(0, amount))}`,
+    [numberFormatter],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current !== null) {
+        window.clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const copyValue = useCallback(async (key: string, value: string) => {
     try {
       await navigator.clipboard.writeText(value);
       setCopiedField(key);
-      window.setTimeout(() => {
+      if (copyTimeoutRef.current !== null) {
+        window.clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = window.setTimeout(() => {
         setCopiedField((prev) => (prev === key ? null : prev));
       }, 2000);
     } catch {
       // Clipboard fallback ignored if blocked by browser context
     }
-  }
+  }, []);
 
-  async function fetchLatestBooking(silent = false) {
-    if (!bookingId) return null;
-    if (!silent) setCheckingNow(true);
-    try {
-      const latest = (await bookingsApi.getBookingById(
-        bookingId,
-      )) as BookingWithPayment;
-      setBooking(latest);
-      setError(null);
-      return latest;
-    } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : isSw
-            ? 'Imeshindwa kupakia maelezo ya malipo.'
-            : 'Failed to load booking payment details.';
-      if (
-        msg.toLowerCase().includes('unauthorized') ||
-        msg.toLowerCase().includes('401')
-      ) {
-        router.replace(
-          `/login?next=${encodeURIComponent(`/bookings/${bookingId}/pay`)}`,
-        );
+  const fetchLatestBooking = useCallback(
+    async (silent = false) => {
+      if (!bookingId || inFlightRef.current) return null;
+      inFlightRef.current = true;
+      if (!silent) setCheckingNow(true);
+      try {
+        const latest = (await bookingsApi.getBookingById(
+          bookingId,
+        )) as BookingWithPayment;
+        setBooking(latest);
+        setError(null);
+        return latest;
+      } catch (err) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : isSw
+              ? 'Imeshindwa kupakia maelezo ya malipo.'
+              : 'Failed to load booking payment details.';
+        if (
+          msg.toLowerCase().includes('unauthorized') ||
+          msg.toLowerCase().includes('401')
+        ) {
+          router.replace(
+            `/login?next=${encodeURIComponent(`/bookings/${bookingId}/pay`)}`,
+          );
+          return null;
+        }
+        if (!silent) {
+          setError(msg);
+        }
         return null;
+      } finally {
+        inFlightRef.current = false;
+        if (!silent) setCheckingNow(false);
       }
-      if (!silent) {
-        setError(msg);
-      }
-      return null;
-    } finally {
-      if (!silent) setCheckingNow(false);
-    }
-  }
+    },
+    [bookingId, isSw, router],
+  );
 
   useEffect(() => {
     let active = true;
@@ -190,8 +216,7 @@ export default function BookingPaymentPage() {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingId]);
+  }, [fetchLatestBooking]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -235,17 +260,50 @@ export default function BookingPaymentPage() {
       return;
     }
 
-    const interval = window.setInterval(async () => {
+    let intervalId: number | null = null;
+
+    const pollOnce = async () => {
+      if (document.visibilityState === 'hidden') return;
       const updated = await fetchLatestBooking(true);
       if (updated?.status === 'CONFIRMED') {
-        window.clearInterval(interval);
+        if (intervalId !== null) window.clearInterval(intervalId);
         router.replace('/tickets');
       }
-    }, POLL_INTERVAL_MS);
+    };
 
-    return () => window.clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booking?.id, booking?.status, isHoldExpired, router]);
+    const startPolling = () => {
+      if (intervalId !== null) return;
+      intervalId = window.setInterval(pollOnce, POLL_INTERVAL_MS);
+    };
+
+    const stopPolling = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        setNowMs(Date.now());
+        void pollOnce();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    if (document.visibilityState === 'visible') {
+      startPolling();
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [booking, isHoldExpired, fetchLatestBooking, router]);
 
   const paymentInfo = useMemo(() => extractPaymentMethod(booking), [booking]);
 
@@ -283,7 +341,9 @@ export default function BookingPaymentPage() {
   }
 
   const eventSlug = booking.event?.slug || '';
-  const backToEventHref = eventSlug ? `/events/${encodeURIComponent(eventSlug)}` : '/events';
+  const backToEventHref = eventSlug
+    ? `/events/${encodeURIComponent(eventSlug)}`
+    : '/events';
 
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] py-8 transition-colors">
@@ -313,7 +373,9 @@ export default function BookingPaymentPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 pb-3.5">
             <div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isSw ? 'Nambari ya Kumbukumbu (Unique Code)' : 'Unique Booking Reference'}
+                {isSw
+                  ? 'Nambari ya Kumbukumbu (Unique Code)'
+                  : 'Unique Booking Reference'}
               </p>
               <div className="mt-1 flex items-center gap-2">
                 <span className="font-mono text-base font-bold text-[#1A8CC4] dark:text-[#29ABE2]">
@@ -347,7 +409,9 @@ export default function BookingPaymentPage() {
               </p>
               {isHoldExpired ? (
                 <span className="mt-1 inline-block rounded-full bg-red-500/15 px-3 py-1 text-xs font-bold text-red-600 dark:text-red-400">
-                  {isSw ? 'Muda Umeisha • Nafasi Imeachiliwa' : 'Expired • Hold Released'}
+                  {isSw
+                    ? 'Muda Umeisha • Nafasi Imeachiliwa'
+                    : 'Expired • Hold Released'}
                 </span>
               ) : (
                 <span className="mt-1 inline-block font-mono text-lg font-bold text-amber-600 dark:text-amber-400">
@@ -433,11 +497,15 @@ export default function BookingPaymentPage() {
                     <div>
                       <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
                         {paymentInfo.type === 'PAYBILL' &&
-                          (isSw ? 'Business / Paybill Number' : 'Paybill Business Number')}
+                          (isSw
+                            ? 'Business / Paybill Number'
+                            : 'Paybill Business Number')}
                         {paymentInfo.type === 'TILL' &&
                           (isSw ? 'Till Number' : 'Till Number')}
                         {paymentInfo.type === 'PHONE' &&
-                          (isSw ? 'Recipient Phone Number' : 'Recipient Phone Number')}
+                          (isSw
+                            ? 'Recipient Phone Number'
+                            : 'Recipient Phone Number')}
                       </span>
                       <span className="font-mono text-sm font-bold text-slate-900 dark:text-white">
                         {paymentInfo.numberOrCode}
@@ -445,7 +513,9 @@ export default function BookingPaymentPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => copyValue('target', paymentInfo.numberOrCode)}
+                      onClick={() =>
+                        copyValue('target', paymentInfo.numberOrCode)
+                      }
                       className="rounded-md border border-slate-300 dark:border-slate-600 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[#29ABE2]"
                     >
                       {copiedField === 'target'
@@ -472,7 +542,9 @@ export default function BookingPaymentPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => copyValue('account', booking.bookingReference)}
+                        onClick={() =>
+                          copyValue('account', booking.bookingReference)
+                        }
                         className="rounded-md border border-slate-300 dark:border-slate-600 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[#29ABE2]"
                       >
                         {copiedField === 'account'

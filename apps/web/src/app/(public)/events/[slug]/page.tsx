@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { bookingsApi, type BookingRecord } from '@/lib/bookingsApi';
@@ -71,7 +71,10 @@ function getEffectivePricingMode(tier: EventTicketTier): GroupPricingMode {
   return tier.pricingMode === 'BUNDLE_FIXED' ? 'BUNDLE_FIXED' : 'PER_OCCUPANT';
 }
 
-function calculateTierSubtotalKes(tier: EventTicketTier, quantity: number): number {
+function calculateTierSubtotalKes(
+  tier: EventTicketTier,
+  quantity: number,
+): number {
   const safeQty = Math.max(1, quantity);
   const mode = getEffectivePricingMode(tier);
   const occupants = getOccupantsPerUnit(tier);
@@ -90,35 +93,55 @@ export default function EventDetailPage() {
   const isSw = language === 'sw';
   const localeTag = isSw ? 'sw-KE' : 'en-KE';
 
-  const formatKes = (amount: number): string => {
-    if (amount === 0) return t('common.free');
-    return `KES ${amount.toLocaleString(localeTag)}`;
-  };
+  const numberFormatter = useMemo(
+    () => new Intl.NumberFormat(localeTag),
+    [localeTag],
+  );
 
-  const formatDateTime = (iso?: string | null): string => {
-    if (!iso) return t('common.tba');
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return iso;
-    return date.toLocaleString(localeTag, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
-  };
+  const dateTimeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(localeTag, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }),
+    [localeTag],
+  );
 
-  const formatGroupCategoryLabel = (category?: string | null): string => {
-    switch (category) {
-      case 'FAMILY':
-        return t('common.group.family');
-      case 'COUPLE':
-        return t('common.group.couple');
-      case 'FRIENDS':
-        return t('common.group.friends');
-      case 'TABLE':
-        return t('common.group.table');
-      default:
-        return category ? category : t('common.group.bundle');
-    }
-  };
+  const formatKes = useCallback(
+    (amount: number): string => {
+      if (amount === 0) return t('common.free');
+      return `KES ${numberFormatter.format(amount)}`;
+    },
+    [numberFormatter, t],
+  );
+
+  const formatDateTime = useCallback(
+    (iso?: string | null): string => {
+      if (!iso) return t('common.tba');
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) return iso;
+      return dateTimeFormatter.format(date);
+    },
+    [dateTimeFormatter, t],
+  );
+
+  const formatGroupCategoryLabel = useCallback(
+    (category?: string | null): string => {
+      switch (category) {
+        case 'FAMILY':
+          return t('common.group.family');
+        case 'COUPLE':
+          return t('common.group.couple');
+        case 'FRIENDS':
+          return t('common.group.friends');
+        case 'TABLE':
+          return t('common.group.table');
+        default:
+          return category ? category : t('common.group.bundle');
+      }
+    },
+    [t],
+  );
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -161,6 +184,7 @@ export default function EventDetailPage() {
   useEffect(() => {
     if (!slug) return;
     let active = true;
+    const controller = new AbortController();
 
     async function loadEvent() {
       setLoading(true);
@@ -170,6 +194,7 @@ export default function EventDetailPage() {
           `${API_BASE_URL}/events/${encodeURIComponent(slug)}`,
           {
             credentials: 'include',
+            signal: controller.signal,
           },
         );
         const text = await res.text();
@@ -204,20 +229,22 @@ export default function EventDetailPage() {
             ? soloTiers
             : loadedTiers;
         const firstAvailable =
-          pool.find((item) => item.isActive !== false && getAvailableCount(item) > 0) ??
-          pool[0];
+          pool.find(
+            (item) => item.isActive !== false && getAvailableCount(item) > 0,
+          ) ?? pool[0];
         setSelectedTierId(firstAvailable ? firstAvailable.id : '');
       } catch (err) {
-        if (!active) return;
+        if (!active || (err as Error)?.name === 'AbortError') return;
         setError(err instanceof Error ? err.message : t('evt.detail.loadError'));
       } finally {
         if (active) setLoading(false);
       }
     }
 
-    loadEvent();
+    void loadEvent();
     return () => {
       active = false;
+      controller.abort();
     };
   }, [slug, t]);
 
@@ -230,8 +257,9 @@ export default function EventDetailPage() {
           ? individualTiers
           : tiers;
     const firstAvailable =
-      pool.find((item) => item.isActive !== false && getAvailableCount(item) > 0) ??
-      pool[0];
+      pool.find(
+        (item) => item.isActive !== false && getAvailableCount(item) > 0,
+      ) ?? pool[0];
     setSelectedTierId(firstAvailable ? firstAvailable.id : '');
     setQuantity(1);
     setBookingError(null);
@@ -338,6 +366,8 @@ export default function EventDetailPage() {
             <img
               src={event.coverImageUrl}
               alt={event.title}
+              loading="eager"
+              decoding="async"
               className="w-full h-72 object-cover rounded-2xl border border-slate-200 dark:border-slate-700"
             />
           )}
@@ -357,7 +387,7 @@ export default function EventDetailPage() {
                 event.totalTicketsAvailable > 0 && (
                   <span className="inline-flex items-center rounded-full bg-slate-200/80 dark:bg-[#3A3A3A] px-2.5 py-0.5 text-[11px] font-medium text-slate-700 dark:text-slate-200">
                     {t('evt.detail.capacityPool', {
-                      count: event.totalTicketsAvailable.toLocaleString(localeTag),
+                      count: numberFormatter.format(event.totalTicketsAvailable),
                     })}
                   </span>
                 )}
@@ -383,7 +413,9 @@ export default function EventDetailPage() {
             )}
             {event.organizer?.businessName && (
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                {t('evt.detail.organizer', { name: event.organizer.businessName })}
+                {t('evt.detail.organizer', {
+                  name: event.organizer.businessName,
+                })}
               </p>
             )}
           </div>

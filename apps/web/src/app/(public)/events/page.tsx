@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Search, MapPin, Calendar, ChevronDown, Users } from 'lucide-react';
-import { publicEventsApi, EventItem } from '@/lib/eventsApi';
+import { publicEventsApi, type EventItem } from '@/lib/eventsApi';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 import { FullPageLoader } from '@/components/ui';
 
@@ -51,18 +52,18 @@ const BANNER_SLIDES = [
   },
 ];
 
-function BannerCarousel() {
+function BannerCarouselImpl() {
   const [current, setCurrent] = useState(0);
   const pausedRef = useRef(false);
 
   useEffect(() => {
     if (BANNER_SLIDES.length <= 1) return;
-    const t = setInterval(() => {
-      if (!pausedRef.current) {
+    const timer = window.setInterval(() => {
+      if (!pausedRef.current && document.visibilityState === 'visible') {
         setCurrent((i) => (i + 1) % BANNER_SLIDES.length);
       }
     }, 5000);
-    return () => clearInterval(t);
+    return () => window.clearInterval(timer);
   }, []);
 
   return (
@@ -77,7 +78,7 @@ function BannerCarousel() {
     >
       {BANNER_SLIDES.map((slide, i) => (
         <div
-          key={i}
+          key={slide.src}
           className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
             i === current ? 'opacity-100 z-10' : 'opacity-0 z-0'
           }`}
@@ -88,6 +89,7 @@ function BannerCarousel() {
             alt={slide.alt}
             className="w-full h-full object-cover"
             loading={i === 0 ? 'eager' : 'lazy'}
+            decoding="async"
           />
         </div>
       ))}
@@ -118,6 +120,13 @@ function BannerCarousel() {
   );
 }
 
+const BannerCarousel = dynamic(() => Promise.resolve(BannerCarouselImpl), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[160px] sm:h-[200px] md:h-[260px] bg-slate-900" />
+  ),
+});
+
 export default function EventsPage() {
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get('category');
@@ -134,26 +143,40 @@ export default function EventsPage() {
   const [county, setCounty] = useState('');
 
   useEffect(() => {
-    const load = async () => {
+    let active = true;
+    const controller = new AbortController();
+
+    const timeout = window.setTimeout(async () => {
       setLoading(true);
       setError('');
       try {
-        const res = await publicEventsApi.list({
-          q: search || undefined,
-          categoryId: selectedCategory || undefined,
-          county: county || undefined,
-          limit: 50,
-        });
+        const res = await publicEventsApi.list(
+          {
+            q: search.trim() || undefined,
+            categoryId: selectedCategory || undefined,
+            county: county || undefined,
+            limit: 50,
+          },
+          { signal: controller.signal },
+        );
+        if (!active) return;
         setEvents(res.items);
         setTotal(res.total);
-      } catch (err: any) {
-        setError(err?.message || t('events.loading'));
+      } catch (err: unknown) {
+        if (!active || (err as Error)?.name === 'AbortError') return;
+        const message =
+          err instanceof Error ? err.message : t('events.loading');
+        setError(message);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
-    const timeout = setTimeout(load, 300);
-    return () => clearTimeout(timeout);
   }, [search, selectedCategory, county, t]);
 
   const clearFilters = () => {
@@ -162,7 +185,7 @@ export default function EventsPage() {
     setSearch('');
   };
 
-  const hasFilters = Boolean(selectedCategory || county || search);
+  const hasFilters = Boolean(selectedCategory || county || search.trim());
 
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-[#2B2B2B] transition-colors">
@@ -296,8 +319,12 @@ export default function EventsPage() {
 
           {!loading && !error && events.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {events.map((event) => (
-                <PublicEventCard key={event.id} event={event} />
+              {events.map((event, index) => (
+                <PublicEventCard
+                  key={event.id}
+                  event={event}
+                  eagerImage={index < 4}
+                />
               ))}
             </div>
           )}
@@ -322,27 +349,57 @@ function getTierUnitPrice(
   return tier.priceKes;
 }
 
-function PublicEventCard({ event }: { event: EventItem }) {
+function PublicEventCard({
+  event,
+  eagerImage = false,
+}: {
+  event: EventItem;
+  eagerImage?: boolean;
+}) {
   const { t, language } = useLanguage();
   const localeTag = language === 'sw' ? 'sw-KE' : 'en-KE';
-  const activeTiers = (event.ticketTiers ?? []).filter(
-    (tier) => tier.isActive !== false,
+
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(localeTag, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    [localeTag],
   );
-  const cheapestTier = [...activeTiers].sort(
-    (a, b) => getTierUnitPrice(a) - getTierUnitPrice(b),
-  )[0];
-  const hasGroupTier =
-    Boolean(event.allowGroupBookings) ||
-    activeTiers.some((tier) => Boolean(tier.isGroupSubgroup));
 
-  const date = new Date(event.startsAt);
-  const dateStr = date.toLocaleDateString(localeTag, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  const numberFormatter = useMemo(
+    () => new Intl.NumberFormat(localeTag),
+    [localeTag],
+  );
 
-  const cheapestPrice = cheapestTier ? getTierUnitPrice(cheapestTier) : null;
+  const cheapestPrice = useMemo(() => {
+    const activeTiers = (event.ticketTiers ?? []).filter(
+      (tier) => tier.isActive !== false,
+    );
+    if (activeTiers.length === 0) return null;
+    const sorted = [...activeTiers].sort(
+      (a, b) => getTierUnitPrice(a) - getTierUnitPrice(b),
+    );
+    return getTierUnitPrice(sorted[0]);
+  }, [event.ticketTiers]);
+
+  const hasGroupTier = useMemo(
+    () =>
+      Boolean(event.allowGroupBookings) ||
+      (event.ticketTiers ?? []).some(
+        (tier) => tier.isActive !== false && Boolean(tier.isGroupSubgroup),
+      ),
+    [event.allowGroupBookings, event.ticketTiers],
+  );
+
+  const dateStr = useMemo(() => {
+    const date = new Date(event.startsAt);
+    return Number.isNaN(date.getTime())
+      ? event.startsAt
+      : dateFormatter.format(date);
+  }, [event.startsAt, dateFormatter]);
 
   return (
     <Link
@@ -354,6 +411,8 @@ function PublicEventCard({ event }: { event: EventItem }) {
           <img
             src={event.coverImageUrl}
             alt={event.title}
+            loading={eagerImage ? 'eager' : 'lazy'}
+            decoding="async"
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-600 ease-out group-hover:scale-105"
           />
         ) : (
@@ -407,7 +466,7 @@ function PublicEventCard({ event }: { event: EventItem }) {
               {cheapestPrice === 0
                 ? t('common.free')
                 : t('events.card.fromKes', {
-                    amount: cheapestPrice.toLocaleString(localeTag),
+                    amount: numberFormatter.format(cheapestPrice),
                   })}
             </span>
           ) : (

@@ -21,9 +21,12 @@ import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { CheckInTicketDto } from './dto/check-in-ticket.dto';
 
 const HOLD_MINUTES = 15;
+const EXPIRY_SWEEP_COOLDOWN_MS = 5000;
 
 @Injectable()
 export class BookingsService {
+  private lastGlobalSweepAt = 0;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
@@ -51,24 +54,40 @@ export class BookingsService {
     const targetCount = this.getSeatsForBooking(booking);
     const existingIndices = new Set(existingTickets.map((t) => t.ticketIndex));
 
+    const missingRows: Prisma.ETicketCreateManyInput[] = [];
     for (let idx = 1; idx <= targetCount; idx += 1) {
-      if (existingIndices.has(idx)) {
-        continue;
-      }
-
-      await tx.eTicket.create({
-        data: {
+      if (!existingIndices.has(idx)) {
+        missingRows.push({
           bookingId: booking.id,
           ticketIndex: idx,
           ticketCode: this.generateReference('TKT'),
           qrToken: randomBytes(24).toString('hex'),
           status: TicketStatus.ISSUED,
-        },
+        });
+      }
+    }
+
+    if (missingRows.length > 0) {
+      await tx.eTicket.createMany({
+        data: missingRows,
+        skipDuplicates: true,
       });
     }
 
     return tx.eTicket.findMany({
       where: { bookingId: booking.id },
+      select: {
+        id: true,
+        bookingId: true,
+        ticketIndex: true,
+        ticketCode: true,
+        qrToken: true,
+        guestName: true,
+        guestPhone: true,
+        status: true,
+        issuedAt: true,
+        scannedAt: true,
+      },
       orderBy: { ticketIndex: 'asc' },
     });
   }
@@ -93,13 +112,67 @@ export class BookingsService {
     }
   }
 
+  private async expireSingleBookingIfDue(bookingId: string): Promise<void> {
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.findFirst({
+        where: {
+          id: bookingId,
+          status: BookingStatus.PENDING,
+          expiresAt: { lte: now },
+        },
+        select: {
+          id: true,
+          ticketTierId: true,
+          quantity: true,
+          occupantsCount: true,
+        },
+      });
+
+      if (!booking) return;
+
+      const updated = await tx.booking.updateMany({
+        where: {
+          id: booking.id,
+          status: BookingStatus.PENDING,
+        },
+        data: {
+          status: BookingStatus.EXPIRED,
+          cancellationReason: 'Reservation hold expired',
+        },
+      });
+
+      if (updated.count > 0) {
+        const seatsToRelease = this.getSeatsForBooking(booking);
+        await tx.ticketTier.update({
+          where: { id: booking.ticketTierId },
+          data: {
+            quantityReserved: { decrement: seatsToRelease },
+          },
+        });
+      }
+    });
+  }
+
   async expireStaleBookings(filter?: {
     eventId?: string;
     ticketTierId?: string;
     attendeeId?: string;
+    force?: boolean;
   }): Promise<void> {
-    const now = new Date();
+    const isScoped = Boolean(
+      filter?.eventId || filter?.ticketTierId || filter?.attendeeId,
+    );
+    const nowMs = Date.now();
 
+    if (!isScoped && !filter?.force) {
+      if (nowMs - this.lastGlobalSweepAt < EXPIRY_SWEEP_COOLDOWN_MS) {
+        return;
+      }
+      this.lastGlobalSweepAt = nowMs;
+    }
+
+    const now = new Date(nowMs);
     const expiredBookings = await this.prisma.booking.findMany({
       where: {
         status: BookingStatus.PENDING,
@@ -118,29 +191,37 @@ export class BookingsService {
 
     if (expiredBookings.length === 0) return;
 
-    await this.prisma.$transaction(async (tx) => {
-      for (const b of expiredBookings) {
-        const updated = await tx.booking.updateMany({
-          where: {
-            id: b.id,
-            status: BookingStatus.PENDING,
-          },
-          data: {
-            status: BookingStatus.EXPIRED,
-            cancellationReason: 'Reservation hold expired',
-          },
-        });
+    const seatsByTier = new Map<string, number>();
+    const expiredIds: string[] = [];
 
-        if (updated.count > 0) {
-          const seatsToRelease = this.getSeatsForBooking(b);
-          await tx.ticketTier.update({
-            where: { id: b.ticketTierId },
+    for (const b of expiredBookings) {
+      expiredIds.push(b.id);
+      const seats = this.getSeatsForBooking(b);
+      seatsByTier.set(b.ticketTierId, (seatsByTier.get(b.ticketTierId) ?? 0) + seats);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.booking.updateMany({
+        where: {
+          id: { in: expiredIds },
+          status: BookingStatus.PENDING,
+        },
+        data: {
+          status: BookingStatus.EXPIRED,
+          cancellationReason: 'Reservation hold expired',
+        },
+      });
+
+      await Promise.all(
+        Array.from(seatsByTier.entries()).map(([ticketTierId, seats]) =>
+          tx.ticketTier.update({
+            where: { id: ticketTierId },
             data: {
-              quantityReserved: { decrement: seatsToRelease },
+              quantityReserved: { decrement: seats },
             },
-          });
-        }
-      }
+          }),
+        ),
+      );
     });
   }
 
@@ -154,17 +235,46 @@ export class BookingsService {
     const expiresAt = new Date(now.getTime() + HOLD_MINUTES * 60 * 1000);
 
     const booking = await this.prisma.$transaction(async (tx) => {
-      const event = await tx.event.findUnique({
-        where: { id: dto.eventId },
-        include: {
-          organizer: {
-            select: {
-              id: true,
-              businessName: true,
+      const [event, tier] = await Promise.all([
+        tx.event.findUnique({
+          where: { id: dto.eventId },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            endsAt: true,
+            maxAttendees: true,
+            totalTicketsAvailable: true,
+            allowGroupBookings: true,
+            organizer: {
+              select: {
+                id: true,
+                businessName: true,
+              },
             },
           },
-        },
-      });
+        }),
+        tx.ticketTier.findUnique({
+          where: { id: dto.ticketTierId },
+          select: {
+            id: true,
+            eventId: true,
+            name: true,
+            priceKes: true,
+            quantityTotal: true,
+            quantitySold: true,
+            quantityReserved: true,
+            isGroupSubgroup: true,
+            groupCategory: true,
+            occupantsPerUnit: true,
+            pricingMode: true,
+            salesStartAt: true,
+            salesEndAt: true,
+            isActive: true,
+            version: true,
+          },
+        }),
+      ]);
 
       if (!event) {
         throw new NotFoundException('Event not found');
@@ -183,10 +293,6 @@ export class BookingsService {
       if (event.endsAt <= now) {
         throw new BadRequestException('This event has already ended');
       }
-
-      const tier = await tx.ticketTier.findUnique({
-        where: { id: dto.ticketTierId },
-      });
 
       if (!tier || tier.eventId !== event.id) {
         throw new NotFoundException(
@@ -289,7 +395,20 @@ export class BookingsService {
           expiresAt,
           confirmedAt: isFree ? now : null,
         },
-        include: {
+        select: {
+          id: true,
+          bookingReference: true,
+          attendeeId: true,
+          eventId: true,
+          ticketTierId: true,
+          quantity: true,
+          occupantsCount: true,
+          unitPriceKes: true,
+          totalAmountKes: true,
+          status: true,
+          expiresAt: true,
+          confirmedAt: true,
+          createdAt: true,
           event: {
             select: {
               id: true,
@@ -316,7 +435,16 @@ export class BookingsService {
           eTickets: {
             orderBy: { ticketIndex: 'asc' },
           },
-          payments: true,
+          payments: {
+            select: {
+              id: true,
+              status: true,
+              amountKes: true,
+              mpesaReceipt: true,
+              method: true,
+              createdAt: true,
+            },
+          },
         },
       });
 
@@ -376,7 +504,22 @@ export class BookingsService {
         ...(filter?.status ? { status: filter.status } : {}),
         ...(filter?.eventId ? { eventId: filter.eventId } : {}),
       },
-      include: {
+      select: {
+        id: true,
+        bookingReference: true,
+        attendeeId: true,
+        eventId: true,
+        ticketTierId: true,
+        quantity: true,
+        occupantsCount: true,
+        unitPriceKes: true,
+        totalAmountKes: true,
+        status: true,
+        expiresAt: true,
+        confirmedAt: true,
+        cancelledAt: true,
+        cancellationReason: true,
+        createdAt: true,
         event: {
           select: {
             id: true,
@@ -402,9 +545,29 @@ export class BookingsService {
           },
         },
         payments: {
+          select: {
+            id: true,
+            status: true,
+            amountKes: true,
+            mpesaReceipt: true,
+            billReference: true,
+            method: true,
+            createdAt: true,
+          },
           orderBy: { createdAt: 'desc' },
         },
         eTickets: {
+          select: {
+            id: true,
+            ticketIndex: true,
+            ticketCode: true,
+            qrToken: true,
+            guestName: true,
+            guestPhone: true,
+            status: true,
+            issuedAt: true,
+            scannedAt: true,
+          },
           orderBy: { ticketIndex: 'asc' },
         },
       },
@@ -413,11 +576,26 @@ export class BookingsService {
   }
 
   async getBookingById(bookingId: string, userId: string, userRole?: string) {
-    await this.expireStaleBookings();
+    await this.expireSingleBookingIfDue(bookingId);
 
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
-      include: {
+      select: {
+        id: true,
+        bookingReference: true,
+        attendeeId: true,
+        eventId: true,
+        ticketTierId: true,
+        quantity: true,
+        occupantsCount: true,
+        unitPriceKes: true,
+        totalAmountKes: true,
+        status: true,
+        expiresAt: true,
+        confirmedAt: true,
+        cancelledAt: true,
+        cancellationReason: true,
+        createdAt: true,
         attendee: {
           select: {
             id: true,
@@ -427,21 +605,71 @@ export class BookingsService {
           },
         },
         event: {
-          include: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            venueName: true,
+            address: true,
+            county: true,
+            startsAt: true,
+            endsAt: true,
+            coverImageUrl: true,
             organizer: {
               select: {
                 id: true,
                 userId: true,
                 businessName: true,
+                paymentMethods: {
+                  where: { isActive: true },
+                  orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+                  select: {
+                    id: true,
+                    methodType: true,
+                    shortcode: true,
+                    accountNumber: true,
+                    phoneNumber: true,
+                    displayLabel: true,
+                    isDefault: true,
+                  },
+                },
               },
             },
           },
         },
-        ticketTier: true,
+        ticketTier: {
+          select: {
+            id: true,
+            name: true,
+            priceKes: true,
+            isGroupSubgroup: true,
+            groupCategory: true,
+            occupantsPerUnit: true,
+            pricingMode: true,
+          },
+        },
         payments: {
+          select: {
+            id: true,
+            status: true,
+            amountKes: true,
+            mpesaReceipt: true,
+            billReference: true,
+            method: true,
+            createdAt: true,
+          },
           orderBy: { createdAt: 'desc' },
         },
         eTickets: {
+          select: {
+            id: true,
+            ticketIndex: true,
+            ticketCode: true,
+            qrToken: true,
+            status: true,
+            issuedAt: true,
+            scannedAt: true,
+          },
           orderBy: { ticketIndex: 'asc' },
         },
       },
@@ -467,11 +695,19 @@ export class BookingsService {
     userId: string,
     dto?: CancelBookingDto,
   ) {
-    await this.expireStaleBookings();
+    await this.expireSingleBookingIfDue(bookingId);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { id: bookingId },
+        select: {
+          id: true,
+          attendeeId: true,
+          ticketTierId: true,
+          quantity: true,
+          occupantsCount: true,
+          status: true,
+        },
       });
 
       if (!booking) {
@@ -500,7 +736,11 @@ export class BookingsService {
           cancelledAt: new Date(),
           cancellationReason: dto?.reason || 'Cancelled by attendee',
         },
-        include: {
+        select: {
+          id: true,
+          bookingReference: true,
+          status: true,
+          cancelledAt: true,
           event: {
             select: { id: true, title: true },
           },
@@ -543,16 +783,19 @@ export class BookingsService {
     userRole?: string,
     filter?: BookingFilterDto & { q?: string },
   ) {
-    await this.expireStaleBookings({ eventId });
-
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-      include: {
-        organizer: {
-          select: { id: true, userId: true, businessName: true },
+    const [event] = await Promise.all([
+      this.prisma.event.findUnique({
+        where: { id: eventId },
+        select: {
+          id: true,
+          title: true,
+          organizer: {
+            select: { id: true, userId: true, businessName: true },
+          },
         },
-      },
-    });
+      }),
+      this.expireStaleBookings({ eventId }),
+    ]);
 
     if (!event) {
       throw new NotFoundException('Event not found');
@@ -610,7 +853,17 @@ export class BookingsService {
             }
           : {}),
       },
-      include: {
+      select: {
+        id: true,
+        bookingReference: true,
+        quantity: true,
+        occupantsCount: true,
+        unitPriceKes: true,
+        totalAmountKes: true,
+        status: true,
+        expiresAt: true,
+        confirmedAt: true,
+        createdAt: true,
         attendee: {
           select: {
             id: true,
@@ -631,9 +884,26 @@ export class BookingsService {
           },
         },
         eTickets: {
+          select: {
+            id: true,
+            ticketIndex: true,
+            ticketCode: true,
+            guestName: true,
+            guestPhone: true,
+            status: true,
+            scannedAt: true,
+          },
           orderBy: { ticketIndex: 'asc' },
         },
         payments: {
+          select: {
+            id: true,
+            status: true,
+            amountKes: true,
+            mpesaReceipt: true,
+            method: true,
+            createdAt: true,
+          },
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
@@ -704,9 +974,21 @@ export class BookingsService {
           ? { ticketCode: { equals: code, mode: 'insensitive' } }
           : { qrToken: token }),
       },
-      include: {
+      select: {
+        id: true,
+        ticketIndex: true,
+        ticketCode: true,
+        guestName: true,
+        guestPhone: true,
+        status: true,
+        scannedAt: true,
         booking: {
-          include: {
+          select: {
+            id: true,
+            eventId: true,
+            bookingReference: true,
+            occupantsCount: true,
+            status: true,
             attendee: {
               select: { id: true, fullName: true, phone: true },
             },
@@ -770,7 +1052,14 @@ export class BookingsService {
         status: TicketStatus.SCANNED,
         scannedAt: new Date(),
       },
-      include: {
+      select: {
+        id: true,
+        ticketIndex: true,
+        ticketCode: true,
+        guestName: true,
+        guestPhone: true,
+        status: true,
+        scannedAt: true,
         booking: {
           select: {
             id: true,
@@ -800,7 +1089,20 @@ export class BookingsService {
     const run = async (tx: Prisma.TransactionClient) => {
       const booking = await tx.booking.findUnique({
         where: { id: bookingId },
-        include: { eTickets: true },
+        select: {
+          id: true,
+          bookingReference: true,
+          attendeeId: true,
+          eventId: true,
+          ticketTierId: true,
+          quantity: true,
+          occupantsCount: true,
+          totalAmountKes: true,
+          status: true,
+          eTickets: {
+            select: { ticketIndex: true },
+          },
+        },
       });
 
       if (!booking) {
@@ -810,11 +1112,15 @@ export class BookingsService {
       const seatsCount = this.getSeatsForBooking(booking);
 
       if (booking.status === BookingStatus.CONFIRMED) {
-        await this.issueTicketsForBooking(tx, booking, booking.eTickets);
-        return tx.booking.findUnique({
-          where: { id: booking.id },
-          include: { eTickets: { orderBy: { ticketIndex: 'asc' } } },
-        });
+        const eTickets = await this.issueTicketsForBooking(
+          tx,
+          booking,
+          booking.eTickets,
+        );
+        return {
+          ...booking,
+          eTickets,
+        };
       }
 
       const confirmed = await tx.booking.update({
@@ -822,6 +1128,18 @@ export class BookingsService {
         data: {
           status: BookingStatus.CONFIRMED,
           confirmedAt: new Date(),
+        },
+        select: {
+          id: true,
+          bookingReference: true,
+          attendeeId: true,
+          eventId: true,
+          ticketTierId: true,
+          quantity: true,
+          occupantsCount: true,
+          totalAmountKes: true,
+          status: true,
+          confirmedAt: true,
         },
       });
 

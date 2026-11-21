@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   bookingsApi,
@@ -9,7 +10,7 @@ import {
 } from '@/lib/bookingsApi';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 
-interface TicketPassEntry {
+export interface TicketPassEntry {
   booking: BookingRecord;
   ticket: BookingETicket;
   passIndex: number;
@@ -23,34 +24,132 @@ function extractTicketsForBooking(booking: BookingRecord): BookingETicket[] {
   return booking.eTicket ? [booking.eTicket] : [];
 }
 
+interface TicketPassInspectorProps {
+  selectedEntry: TicketPassEntry | null;
+  formatDateTime: (iso?: string | null) => string;
+}
+
+function TicketPassInspectorImpl({
+  selectedEntry,
+  formatDateTime,
+}: TicketPassInspectorProps) {
+  const { t } = useLanguage();
+
+  return (
+    <aside className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] p-5 h-fit space-y-4">
+      <h2 className="text-base font-bold text-slate-900 dark:text-white">
+        {t('tickets.aside.heading')}
+      </h2>
+      {selectedEntry ? (
+        <div className="space-y-3 text-xs">
+          <div>
+            <p className="text-slate-500 dark:text-slate-400">
+              {t('tickets.aside.event')}
+            </p>
+            <p className="font-semibold text-sm text-slate-900 dark:text-white">
+              {selectedEntry.booking.event.title}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-500 dark:text-slate-400">
+              {t('tickets.aside.refAndTier')}
+            </p>
+            <p className="font-semibold text-slate-900 dark:text-white">
+              {selectedEntry.booking.bookingReference} ·{' '}
+              {selectedEntry.booking.ticketTier.name}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-500 dark:text-slate-400">
+              {t('tickets.aside.ticketCode')}
+            </p>
+            <p className="font-mono font-semibold text-sm text-[#1A8CC4] dark:text-[#29ABE2]">
+              {selectedEntry.ticket.ticketCode}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-500 dark:text-slate-400">
+              {t('tickets.aside.qrToken')}
+            </p>
+            <div className="mt-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#2B2B2B] p-3 font-mono text-slate-800 dark:text-slate-100 break-all select-all">
+              {selectedEntry.ticket.qrToken}
+            </div>
+          </div>
+          {(selectedEntry.ticket.checkedInAt ||
+            selectedEntry.ticket.scannedAt) && (
+            <p className="text-slate-600 dark:text-slate-300">
+              {t('tickets.aside.checkedInAt')}{' '}
+              <span className="font-mono font-semibold">
+                {formatDateTime(
+                  selectedEntry.ticket.checkedInAt ??
+                    selectedEntry.ticket.scannedAt,
+                )}
+              </span>
+            </p>
+          )}
+          <p className="text-slate-500 dark:text-slate-400">
+            {t('tickets.aside.singleAdmissionNote')}
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {t('tickets.aside.selectPrompt')}
+        </p>
+      )}
+    </aside>
+  );
+}
+
+const TicketPassInspector = dynamic(
+  () => Promise.resolve(TicketPassInspectorImpl),
+  {
+    ssr: false,
+    loading: () => (
+      <aside className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] p-5 h-56 animate-pulse" />
+    ),
+  },
+);
+
 export default function TicketsPage() {
   const { t, language } = useLanguage();
   const localeTag = language === 'sw' ? 'sw-KE' : 'en-KE';
 
-  const formatDateTime = (iso?: string | null): string => {
-    if (!iso) return t('common.tba');
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return iso;
-    return date.toLocaleString(localeTag, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
-  };
+  const dateTimeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(localeTag, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }),
+    [localeTag],
+  );
 
-  const formatGroupCategoryLabel = (category?: string | null): string => {
-    switch (category) {
-      case 'FAMILY':
-        return t('common.group.family');
-      case 'COUPLE':
-        return t('common.group.couple');
-      case 'FRIENDS':
-        return t('common.group.friends');
-      case 'TABLE':
-        return t('common.group.table');
-      default:
-        return category ? category : t('common.group.bundle');
-    }
-  };
+  const formatDateTime = useCallback(
+    (iso?: string | null): string => {
+      if (!iso) return t('common.tba');
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) return iso;
+      return dateTimeFormatter.format(date);
+    },
+    [dateTimeFormatter, t],
+  );
+
+  const formatGroupCategoryLabel = useCallback(
+    (category?: string | null): string => {
+      switch (category) {
+        case 'FAMILY':
+          return t('common.group.family');
+        case 'COUPLE':
+          return t('common.group.couple');
+        case 'FRIENDS':
+          return t('common.group.friends');
+        case 'TABLE':
+          return t('common.group.table');
+        default:
+          return category ? category : t('common.group.bundle');
+      }
+    },
+    [t],
+  );
 
   const [bookingsWithTickets, setBookingsWithTickets] = useState<
     BookingRecord[]
@@ -97,7 +196,7 @@ export default function TicketsPage() {
       }
     }
 
-    loadTickets();
+    void loadTickets();
     return () => {
       active = false;
     };
@@ -257,67 +356,10 @@ export default function TicketsPage() {
               )}
             </section>
 
-            <aside className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] p-5 h-fit space-y-4">
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                {t('tickets.aside.heading')}
-              </h2>
-              {selectedEntry ? (
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <p className="text-slate-500 dark:text-slate-400">
-                      {t('tickets.aside.event')}
-                    </p>
-                    <p className="font-semibold text-sm text-slate-900 dark:text-white">
-                      {selectedEntry.booking.event.title}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500 dark:text-slate-400">
-                      {t('tickets.aside.refAndTier')}
-                    </p>
-                    <p className="font-semibold text-slate-900 dark:text-white">
-                      {selectedEntry.booking.bookingReference} ·{' '}
-                      {selectedEntry.booking.ticketTier.name}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500 dark:text-slate-400">
-                      {t('tickets.aside.ticketCode')}
-                    </p>
-                    <p className="font-mono font-semibold text-sm text-[#1A8CC4] dark:text-[#29ABE2]">
-                      {selectedEntry.ticket.ticketCode}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500 dark:text-slate-400">
-                      {t('tickets.aside.qrToken')}
-                    </p>
-                    <div className="mt-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#2B2B2B] p-3 font-mono text-slate-800 dark:text-slate-100 break-all select-all">
-                      {selectedEntry.ticket.qrToken}
-                    </div>
-                  </div>
-                  {(selectedEntry.ticket.checkedInAt ||
-                    selectedEntry.ticket.scannedAt) && (
-                    <p className="text-slate-600 dark:text-slate-300">
-                      {t('tickets.aside.checkedInAt')}{' '}
-                      <span className="font-mono font-semibold">
-                        {formatDateTime(
-                          selectedEntry.ticket.checkedInAt ??
-                            selectedEntry.ticket.scannedAt,
-                        )}
-                      </span>
-                    </p>
-                  )}
-                  <p className="text-slate-500 dark:text-slate-400">
-                    {t('tickets.aside.singleAdmissionNote')}
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {t('tickets.aside.selectPrompt')}
-                </p>
-              )}
-            </aside>
+            <TicketPassInspector
+              selectedEntry={selectedEntry}
+              formatDateTime={formatDateTime}
+            />
           </div>
         )}
       </div>
