@@ -148,16 +148,9 @@ export default function OrganizerLocationPicker({
 
   return (
     <div className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#2B2B2B] p-4 space-y-3 text-left">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-normal text-slate-900 dark:text-white">
-            Share Event Location
-          </p>
-          <p className="text-xs font-normal text-slate-500 dark:text-slate-400">
-            Share your current GPS pin like WhatsApp or click/drag the pin on the map.
-          </p>
-        </div>
-
+      
+      {/* Removed the labels, kept only the button */}
+      <div className="flex justify-end mb-2">
         <Button
           type="button"
           variant="primary"
@@ -168,31 +161,6 @@ export default function OrganizerLocationPicker({
         >
           Share Current Location
         </Button>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-normal">
-        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] px-3 py-2">
-          <span className="text-slate-500 dark:text-slate-400 block">
-            Pinned Coordinates
-          </span>
-          <span className="text-slate-900 dark:text-white mt-0.5 block">
-            {value
-              ? `${value.lat.toFixed(6)}, ${value.lng.toFixed(6)}`
-              : 'Not pinned yet'}
-          </span>
-        </div>
-
-        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#3A3A3A] px-3 py-2">
-          <span className="text-slate-500 dark:text-slate-400 block">
-            Map Reference
-          </span>
-          <span className="text-slate-900 dark:text-white mt-0.5 block">
-            {`${activeCoords.lat.toFixed(5)}, ${activeCoords.lng.toFixed(5)}`}
-            {typeof value?.accuracyMeters === 'number'
-              ? ` (±${value.accuracyMeters} m)`
-              : ''}
-          </span>
-        </div>
       </div>
 
       {statusError && (
