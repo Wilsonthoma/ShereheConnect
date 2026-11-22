@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import {
-  Calendar,
   Camera,
   Send,
   Briefcase,
@@ -31,21 +30,28 @@ export function Footer() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8 md:gap-10 lg:gap-8">
 
           {/* ============================================
-              Branding column — matches navbar style
+              Branding column — clean single SC lockup
           ============================================ */}
           <div className="sm:col-span-2">
-            <Link href="/" className="flex items-center gap-2.5 mb-4 group">
+            <Link
+              href="/"
+              aria-label="Sherehe Connect Home"
+              className="inline-flex items-center gap-2.5 mb-4 group"
+            >
               <div className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-md group-hover:scale-105 transition-transform shrink-0">
-                <Calendar className="w-5 h-5 text-white" strokeWidth={2.2} />
-              </div>
-              <div className="flex flex-col leading-none">
-                <span className="font-display text-xl text-slate-900 dark:text-white tracking-wide transition-colors">
-                  ShereheConnect
-                </span>
-                <span className="text-[0.65rem] text-gold/90 dark:text-gold/80 font-medium tracking-wider uppercase mt-0.5">
-                  {tt('footer.taglineShort', 'Discover Events')}
+                <span
+                  className="text-white text-sm font-extrabold tracking-tighter leading-none select-none"
+                  style={{ fontFamily: 'var(--font-display)' }}
+                >
+                  SC
                 </span>
               </div>
+              <span className="inline-flex items-baseline gap-0.5 leading-none select-none">
+                <span className="font-display text-xl text-slate-900 dark:text-white tracking-tight transition-colors">
+                  SC
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-gradient inline-block translate-y-[-1px]" />
+              </span>
             </Link>
 
             <p className="text-slate-500 dark:text-slate-400 text-sm mb-6 max-w-sm leading-relaxed transition-colors">

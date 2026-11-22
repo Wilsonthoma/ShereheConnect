@@ -266,9 +266,6 @@ importers:
       '@shereheconnect/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@types/leaflet':
-        specifier: ^1.9.22
-        version: 1.9.22
       cobe:
         specifier: ^2.0.1
         version: 2.0.1
@@ -300,6 +297,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.5
+      '@types/leaflet':
+        specifier: ^1.9.22
+        version: 1.9.22
       '@types/node':
         specifier: ^20
         version: 20.19.43

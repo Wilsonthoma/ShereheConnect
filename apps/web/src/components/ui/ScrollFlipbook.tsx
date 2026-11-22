@@ -21,12 +21,6 @@ interface ScrollFlipbookProps {
   className?: string;
 }
 
-// ============================================
-// LOCAL FALLBACKS
-// If the key isn't in translations.ts yet, these
-// are used so the component still renders correctly.
-// Add these keys to translations.ts to localize.
-// ============================================
 const FALLBACKS: Record<string, string> = {
   'flipbook.viewEvent': 'View Event',
   'flipbook.hint': 'Scroll or drag to flip through',
@@ -35,15 +29,11 @@ const FALLBACKS: Record<string, string> = {
 
 export function ScrollFlipbook({
   images,
-  vhPerPaper = 180,
+  vhPerPaper = 150,
   className = '',
 }: ScrollFlipbookProps) {
   const { t } = useLanguage();
 
-  /**
-   * Translate wrapper with fallback — if the key isn't
-   * defined in the dictionary, use the local fallback.
-   */
   const tt = (key: string): string => {
     const translated = t(key as any);
     if (translated === key && FALLBACKS[key]) return FALLBACKS[key];
@@ -60,7 +50,7 @@ export function ScrollFlipbook({
   const [dragStartProgress, setDragStartProgress] = useState(0);
   const total = images.length;
 
-  const pinHeightVh = total * vhPerPaper + 100;
+  const pinHeightVh = Math.max(120, total * vhPerPaper + 60);
 
   useEffect(() => {
     const update = () => {
@@ -76,7 +66,7 @@ export function ScrollFlipbook({
     const el = containerRef.current;
     if (!el) return;
 
-    let rafId: number;
+    let rafId = 0;
     let targetProgress = 0;
     let currentProgress = 0;
     let isAnimating = false;
@@ -124,17 +114,17 @@ export function ScrollFlipbook({
     };
   }, [total]);
 
-  // Drag interaction
   useEffect(() => {
     if (!isDragging) return;
 
     const onMove = (e: MouseEvent | TouchEvent) => {
-      const y = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+      const y =
+        'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
       const deltaY = dragStartY - y;
       if (Math.abs(deltaY) < 4) return;
 
       const vh = window.innerHeight;
-      const progressDelta = deltaY / (vh * 1.2);
+      const progressDelta = deltaY / (vh * 1.15);
       const newProgress = Math.max(
         0,
         Math.min(1, dragStartProgress + progressDelta),
@@ -176,13 +166,12 @@ export function ScrollFlipbook({
   };
 
   const scaleFactor = Math.max(
-    0.55,
-    Math.min(1, 0.55 + ((viewportWidth - 375) / (1440 - 375)) * 0.45),
+    0.6,
+    Math.min(1, 0.6 + ((viewportWidth - 375) / (1440 - 375)) * 0.4),
   );
 
-  const ease = (t: number) => {
-    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-  };
+  const ease = (t: number) =>
+    t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
   const flipCurve = (t: number) => {
     if (t < 0.25) return ease(t / 0.25) * 0.15;
@@ -190,29 +179,23 @@ export function ScrollFlipbook({
     return 0.85 + ease((t - 0.75) / 0.25) * 0.15;
   };
 
-  // ============================================
-  // RESPONSIVE CARD SIZING
-  // ============================================
-  const SIDE_PADDING = 24;
-  const HINT_AND_GAPS = 96;
-  const EXTRA_TOP_BREATHING = 80;
+  // Compact, balanced card sizing so the deck & hint fit cleanly inside the sticky frame
+  const horizontalAllowance = viewportWidth >= 1024 ? 760 : 40;
+  const verticalAllowance = 156;
 
-  const availableWidth = viewportWidth - SIDE_PADDING;
-  const availableHeight = viewportHeight - HINT_AND_GAPS - EXTRA_TOP_BREATHING;
+  const availableWidth = Math.max(200, viewportWidth - horizontalAllowance);
+  const availableHeight = Math.max(240, viewportHeight - verticalAllowance);
 
-  const maxCardWidth = viewportWidth >= 1024 ? 380 : 440;
+  const maxCardWidth = viewportWidth >= 1024 ? 360 : 390;
 
   let cardWidth = Math.min(maxCardWidth, availableWidth);
   const heightAtThisWidth = (cardWidth * 5) / 4;
   if (heightAtThisWidth > availableHeight) {
     cardWidth = (availableHeight * 4) / 5;
   }
-  cardWidth = Math.max(160, cardWidth);
+  cardWidth = Math.max(180, cardWidth);
   const cardHeight = (cardWidth * 5) / 4;
 
-  /* ============================================
-     FLIPBOOK RENDER LOGIC
-  ============================================ */
   const getPaperState = (index: number) => {
     const flySlot = index;
     const timelinePosition = progress * total;
@@ -242,15 +225,15 @@ export function ScrollFlipbook({
 
     const driftSign = index % 2 === 0 ? 1 : -1;
     const stackedTranslateX =
-      papersAbove * (3 * scaleFactor) + driftSign * 1.5 * scaleFactor;
+      papersAbove * (3.5 * scaleFactor) + driftSign * 1.5 * scaleFactor;
 
     const stackedTranslateY = papersAbove * (2.5 * scaleFactor);
-    const stackedScale = 1 - papersAbove * 0.006;
+    const stackedScale = 1 - papersAbove * 0.008;
 
     const isTop = papersAbove === 0 && flyProgress < 0.05;
     const canHover = isTop && hoveredCard === index;
-    const hoverLift = canHover ? -14 : 0;
-    const hoverScaleBoost = canHover ? 1.025 : 1;
+    const hoverLift = canHover ? -12 : 0;
+    const hoverScaleBoost = canHover ? 1.02 : 1;
     const hoverTilt = canHover ? -1.5 : 0;
 
     const liftPhase = Math.min(1, flyProgress / 0.25);
@@ -258,14 +241,14 @@ export function ScrollFlipbook({
     const easedFlip = ease(flipPhase);
 
     const spinDegrees = -180 * easedFlip;
-    const liftZ = 90 * scaleFactor * liftPhase * (1 - easedFlip * 0.5);
-    const liftY = -30 * scaleFactor * liftPhase * (1 - easedFlip);
+    const liftZ = 85 * scaleFactor * liftPhase * (1 - easedFlip * 0.5);
+    const liftY = -26 * scaleFactor * liftPhase * (1 - easedFlip);
 
     const endZ = -180 * scaleFactor - papersBelow * zStep;
     const flipZ = stackedZ + liftZ + (endZ - stackedZ) * easedFlip;
 
     const flipX = stackedTranslateX + (-22 * scaleFactor) * easedFlip;
-    const flipY = stackedTranslateY + liftY + 40 * scaleFactor * easedFlip;
+    const flipY = stackedTranslateY + liftY + 36 * scaleFactor * easedFlip;
 
     const flipScale = stackedScale * (1 - 0.14 * easedFlip);
 
@@ -273,9 +256,7 @@ export function ScrollFlipbook({
       stackedRotate + (index % 2 === 0 ? -8 : 8) * easedFlip;
 
     const flipOpacity =
-      flyProgress < 0.75
-        ? 1
-        : 1 - ((flyProgress - 0.75) / 0.25) * 0.55;
+      flyProgress < 0.75 ? 1 : 1 - ((flyProgress - 0.75) / 0.25) * 0.55;
 
     const baseZ = (total - index) * 10;
     const flipBoost =
@@ -287,12 +268,12 @@ export function ScrollFlipbook({
     const flightLift = Math.sin(flyProgress * Math.PI);
     const flipShadow =
       flyProgress > 0.05 && flyProgress < 0.95
-        ? `0 ${20 + 50 * flightLift}px ${
-            40 + 80 * flightLift
-          }px rgba(0,0,0,${0.3 + 0.4 * flightLift})`
+        ? `0 ${20 + 45 * flightLift}px ${
+            38 + 75 * flightLift
+          }px rgba(0,0,0,${0.28 + 0.35 * flightLift})`
         : canHover
-        ? '0 20px 40px rgba(0,0,0,0.28)'
-        : '0 8px 20px rgba(0,0,0,0.18)';
+          ? '0 20px 38px rgba(0,0,0,0.26)'
+          : '0 8px 20px rgba(0,0,0,0.16)';
 
     return {
       transform: `translate3d(${flipX}px, ${flipY + hoverLift}px, ${flipZ}px) rotateY(${spinDegrees}deg) rotate(${
@@ -314,7 +295,7 @@ export function ScrollFlipbook({
   };
 
   const perspectiveValue = 1200 + 600 * scaleFactor;
-  const rotateXTilt = 22 + 6 * scaleFactor;
+  const rotateXTilt = 20 + 5 * scaleFactor;
 
   return (
     <div
@@ -323,9 +304,8 @@ export function ScrollFlipbook({
       style={{ height: `${pinHeightVh}vh` }}
     >
       <div
-        className="sticky flex items-center justify-center"
+        className="sticky top-0 flex items-center justify-center"
         style={{
-          top: 0,
           height: '100vh',
           height: '100dvh',
         }}
@@ -348,7 +328,7 @@ export function ScrollFlipbook({
               className="absolute inset-0 flex items-center justify-center"
               style={{
                 transformStyle: 'preserve-3d',
-                transform: `rotateX(${rotateXTilt}deg) rotateZ(-4deg)`,
+                transform: `rotateX(${rotateXTilt}deg) rotateZ(-3.5deg)`,
               }}
             >
               {[...images]
@@ -374,7 +354,7 @@ export function ScrollFlipbook({
                         transition: state.transition,
                         willChange: 'transform, opacity',
                         backfaceVisibility: 'hidden',
-                        borderRadius: '10px',
+                        borderRadius: '12px',
                       }}
                       onMouseEnter={() =>
                         isTop && flyProgress < 0.05 && setHoveredCard(index)
@@ -385,29 +365,32 @@ export function ScrollFlipbook({
                         className="relative w-full h-full"
                         style={{
                           transformStyle: 'preserve-3d',
-                          borderRadius: '10px',
+                          borderRadius: '12px',
                         }}
                       >
-                        {/* Main paper body — orange brand border */}
+                        {/* Main card sheet */}
                         <div
                           className="
-                            absolute inset-0 rounded-md
-                            bg-white dark:bg-slate-800
-                            border-2 border-amber-500 dark:border-amber-400
+                            relative w-full h-full rounded-xl
+                            bg-white dark:bg-slate-900
+                            border border-orange-500/75 dark:border-orange-400/70
                             p-2
-                            transition-colors duration-500
+                            transition-colors duration-300
                           "
                           style={{
-                            borderRadius: '10px',
                             transformStyle: 'preserve-3d',
-                            boxShadow:
-                              '0 8px 24px -10px rgba(245,158,11,0.35), 0 4px 12px -4px rgba(0,0,0,0.15)',
                           }}
                         >
+                          {/* Subtle left binding spine */}
                           <div
-                            className="relative w-full h-full rounded-sm overflow-hidden bg-slate-900"
-                            style={{ borderRadius: '6px' }}
-                          >
+                            aria-hidden="true"
+                            className="
+                              pointer-events-none absolute top-2 bottom-2 left-2 w-1.5 rounded-l-md z-20
+                              bg-gradient-to-b from-orange-500/80 via-orange-600/70 to-orange-700/80
+                            "
+                          />
+
+                          <div className="relative w-full h-full rounded-lg overflow-hidden bg-slate-900">
                             <img
                               src={image.src}
                               alt={image.alt}
@@ -416,10 +399,10 @@ export function ScrollFlipbook({
                               draggable={false}
                             />
 
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/50 to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-transparent" />
 
                             {image.category && (
-                              <div className="absolute top-3 right-3 px-2.5 py-1 rounded-sm bg-brand-gradient text-white text-[0.6rem] font-bold uppercase tracking-wider shadow-md">
+                              <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-brand-gradient text-white text-[0.6rem] font-bold uppercase tracking-wider shadow-md">
                                 {image.category}
                               </div>
                             )}
@@ -436,7 +419,7 @@ export function ScrollFlipbook({
 
                               <div className="flex items-center justify-between gap-3">
                                 {image.price !== undefined && (
-                                  <span className="text-sm sm:text-base font-bold text-gold drop-shadow-md">
+                                  <span className="text-sm sm:text-base font-bold text-orange-400 drop-shadow-md">
                                     {tt('flipbook.pricePrefix')}{' '}
                                     {image.price.toLocaleString()}
                                   </span>
@@ -451,9 +434,9 @@ export function ScrollFlipbook({
                                   }}
                                   onMouseDown={(e) => e.stopPropagation()}
                                   onTouchStart={(e) => e.stopPropagation()}
-                                  className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-sm bg-brand-gradient text-white text-[0.7rem] sm:text-xs font-semibold transition-all shrink-0 ${
+                                  className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-md bg-brand-gradient text-white text-[0.7rem] sm:text-xs font-semibold transition-all shrink-0 ${
                                     isTop && flyProgress < 0.05
-                                      ? 'hover:-translate-y-0.5 hover:shadow-lg hover:shadow-gold/40 cursor-pointer'
+                                      ? 'hover:-translate-y-0.5 hover:shadow-lg hover:shadow-orange-500/40 cursor-pointer'
                                       : 'opacity-50 pointer-events-none'
                                   }`}
                                 >
@@ -465,15 +448,15 @@ export function ScrollFlipbook({
                           </div>
                         </div>
 
-                        {/* Under-paper shadow */}
+                        {/* Under-sheet depth shadow */}
                         <div
-                          className="absolute -inset-[3px] rounded-md -z-10"
+                          aria-hidden="true"
+                          className="absolute -inset-[2px] rounded-xl -z-10"
                           style={{
-                            transform: 'translateZ(-6px)',
+                            transform: 'translateZ(-5px)',
                             background:
-                              'linear-gradient(135deg, rgba(245,158,11,0.35), rgba(234,88,12,0.20))',
-                            borderRadius: '12px',
-                            filter: 'blur(1.5px)',
+                              'linear-gradient(135deg, rgba(249,115,22,0.28), rgba(234,88,12,0.16))',
+                            filter: 'blur(2px)',
                           }}
                         />
                       </div>
@@ -485,10 +468,10 @@ export function ScrollFlipbook({
 
           {/* HINT */}
           <div
-            className="mt-4 md:mt-6 h-10 flex flex-col items-center justify-center gap-1 transition-opacity duration-500 pointer-events-none"
+            className="mt-3 sm:mt-4 h-9 flex flex-col items-center justify-center gap-0.5 transition-opacity duration-500 pointer-events-none"
             style={{ opacity: progress < 0.02 ? 1 : 0 }}
           >
-            <span className="text-[0.7rem] font-medium text-slate-400 dark:text-slate-500">
+            <span className="text-[0.7rem] font-medium text-slate-500 dark:text-slate-400">
               {tt('flipbook.hint')}
             </span>
             <span className="text-slate-400 dark:text-slate-500 text-xs animate-bounce">

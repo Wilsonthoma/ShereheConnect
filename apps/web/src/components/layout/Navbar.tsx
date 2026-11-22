@@ -131,7 +131,7 @@ export function Navbar() {
 
   const scheduleClose = useCallback(() => {
     cancelClose();
-    closeTimer.current = setTimeout(() => setOpenPanel(null), 300);
+    setOpenPanel(null);
   }, [cancelClose]);
 
   const openMenu = (panel: OpenPanel) => {
@@ -292,8 +292,6 @@ export function Navbar() {
       );
     }
 
-
-
     if (openPanel === 'account') {
       if (!loggedIn) {
         return (
@@ -424,19 +422,17 @@ export function Navbar() {
             <div className="flex items-center gap-2 md:gap-3 min-w-0 shrink-0">
               <Link
                 href="/"
-                className="flex items-center gap-2.5 shrink-0 group"
+                aria-label="Sherehe Connect Home"
+                className="flex items-center shrink-0 group"
               >
-                <div className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-md group-hover:scale-105 transition-transform shrink-0">
+                <div className="relative w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-md group-hover:scale-105 group-hover:shadow-lg transition-all shrink-0">
                   <span
-                    className="text-white text-lg font-bold"
+                    className="text-white text-sm font-extrabold tracking-tighter leading-none select-none"
                     style={{ fontFamily: 'var(--font-display)' }}
                   >
-                    S
+                    SC
                   </span>
                 </div>
-                <span className="font-display text-base sm:text-lg lg:text-xl text-slate-900 dark:text-white tracking-wide">
-                  ShereheConnect
-                </span>
               </Link>
 
               {/* Menu trigger */}
@@ -565,6 +561,17 @@ export function Navbar() {
           </div>
         </div>
 
+        {/* ==================== TRANSLUCENT PAGE BACKDROP ==================== */}
+        {openPanel && (
+          <div
+            aria-hidden="true"
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
+            onClick={() => setOpenPanel(null)}
+            className="hidden md:block fixed inset-x-0 top-[70px] bottom-0 bg-slate-900/75 dark:bg-slate-950/85 backdrop-blur-[2px] z-30 transition-opacity duration-200"
+          />
+        )}
+
         {/* ==================== DESKTOP MEGA PANEL ==================== */}
         {openPanel && (
           <div
@@ -684,8 +691,6 @@ export function Navbar() {
                   </button>
                 </MobileAccordion>
               )}
-
-
 
               {/* Company */}
               <MobileAccordion

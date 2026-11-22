@@ -3,6 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 
+const DISCOVER_IMAGE_URL =
+  'https://images.unsplash.com/photo-1771904867058-d0e87989cd5c?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D';
+
+const BOOKING_IMAGE_URL =
+  'https://images.unsplash.com/photo-1649433391719-2e784576d044?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D';
+
+const ATTEND_IMAGE_URL =
+  'https://images.unsplash.com/photo-1702725450813-c695293ca867?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D';
+
 export function HowItWorks() {
   const { t } = useLanguage();
 
@@ -10,27 +19,33 @@ export function HowItWorks() {
     {
       title: t('how.step1.title'),
       desc: t('how.step1.desc'),
+      imageUrl: DISCOVER_IMAGE_URL,
+      imageAlt: 'Discover events on Sherehe Connect',
     },
     {
       title: t('how.step2.title'),
       desc: t('how.step2.desc'),
+      imageUrl: BOOKING_IMAGE_URL,
+      imageAlt: 'Book tickets quickly on mobile',
     },
     {
       title: t('how.step3.title'),
       desc: t('how.step3.desc'),
+      imageUrl: ATTEND_IMAGE_URL,
+      imageAlt: 'Attend and enjoy the live event',
     },
   ];
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
 
-  const SCROLL_ROOM_VH = 150;
+  const SCROLL_ROOM_VH = 165;
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    let rafId: number;
+    let rafId = 0;
     let target = 0;
     let current = 0;
     let animating = false;
@@ -46,11 +61,11 @@ export function HowItWorks() {
 
     const tick = () => {
       const diff = target - current;
-      if (Math.abs(diff) < 0.0003) {
+      if (Math.abs(diff) < 0.0005) {
         current = target;
         animating = false;
       } else {
-        current += diff * 0.06;
+        current += diff * 0.14;
         animating = true;
       }
       setProgress(current);
@@ -82,22 +97,22 @@ export function HowItWorks() {
   // STEP REVEAL — smoother easing
   // ============================================
   const getStepState = (index: number) => {
-    const STAGGER = 0.32;
-    const DURATION = 0.35;
+    const STAGGER = 0.28;
+    const DURATION = 0.34;
 
     const start = index * STAGGER;
     const end = start + DURATION;
-    const t = Math.max(0, Math.min(1, (progress - start) / (end - start)));
-    const eased = 1 - Math.pow(1 - t, 5);
+    const tVal = Math.max(0, Math.min(1, (progress - start) / (end - start)));
+    const eased = 1 - Math.pow(1 - tVal, 5);
 
     return {
       opacity: eased,
-      transform: `translateY(${28 * (1 - eased)}px) scale(${0.95 + 0.05 * eased})`,
+      transform: `translateY(${24 * (1 - eased)}px) scale(${0.96 + 0.04 * eased})`,
       transition: 'none',
     };
   };
 
-  const SNAKE_END = 0.97;
+  const SNAKE_END = 0.94;
   const pathProgress = Math.max(0, Math.min(1, progress / SNAKE_END));
 
   return (
@@ -106,11 +121,20 @@ export function HowItWorks() {
       className="relative w-full"
       style={{ height: `calc(100vh + ${SCROLL_ROOM_VH}vh)` }}
     >
-      <section className="sticky top-0 h-screen h-[100dvh] flex items-center bg-light dark:bg-slate-950 overflow-hidden">
-        <div className="container-fluid relative max-w-6xl mx-auto w-full">
+      <section className="sticky top-0 h-screen h-[100dvh] flex items-center bg-white dark:bg-slate-950 text-slate-900 dark:text-white overflow-hidden transition-colors duration-300 border-t border-slate-200/70 dark:border-slate-800/70">
+        {/* Subtle theme-matched ambient accent */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-100"
+          style={{
+            background:
+              'radial-gradient(ellipse 45% 40% at 50% 45%, rgba(249, 115, 22, 0.08), rgba(249, 115, 22, 0) 70%)',
+          }}
+        />
+
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-8 sm:py-10">
           {/* HEADER */}
-          <div className="text-center mb-10 md:mb-14">
-            <h2 className="heading-display heading-md text-brand-gradient">
+          <div className="text-center mb-8 md:mb-12">
+            <h2 className="heading-display text-3xl sm:text-4xl lg:text-5xl text-brand-gradient leading-[1.12] tracking-tight">
               {t('how.heading')}
             </h2>
           </div>
@@ -119,7 +143,7 @@ export function HowItWorks() {
           <div className="hidden md:block relative">
             <svg
               className="absolute inset-0 w-full h-full pointer-events-none"
-              viewBox="0 0 1000 320"
+              viewBox="0 0 1000 380"
               preserveAspectRatio="none"
               fill="none"
               aria-hidden="true"
@@ -132,7 +156,7 @@ export function HowItWorks() {
                   x2="100%"
                   y2="0%"
                 >
-                  <stop offset="0%" stopColor="#f59e0b" />
+                  <stop offset="0%" stopColor="#f97316" />
                   <stop offset="50%" stopColor="#ea580c" />
                   <stop offset="100%" stopColor="#c2410c" />
                 </linearGradient>
@@ -144,9 +168,9 @@ export function HowItWorks() {
                   x2="100%"
                   y2="0%"
                 >
-                  <stop offset="0%" stopColor="#fbbf24" />
-                  <stop offset="50%" stopColor="#fb923c" />
-                  <stop offset="100%" stopColor="#f97316" />
+                  <stop offset="0%" stopColor="#fb923c" />
+                  <stop offset="50%" stopColor="#f97316" />
+                  <stop offset="100%" stopColor="#ea580c" />
                 </linearGradient>
 
                 <filter
@@ -180,10 +204,10 @@ export function HowItWorks() {
 
               {/* Base faded track — light theme */}
               <path
-                d="M 100 90
-                   C 220 -10, 320 -10, 400 90
-                   S 620 200, 700 110
-                   C 760 40, 860 40, 900 100"
+                d="M 100 95
+                   C 220 -10, 320 -10, 400 95
+                   S 620 220, 700 120
+                   C 760 45, 860 45, 900 105"
                 stroke="rgb(203,213,225)"
                 strokeWidth="3"
                 strokeDasharray="10 12"
@@ -194,10 +218,10 @@ export function HowItWorks() {
 
               {/* Base faded track — dark theme */}
               <path
-                d="M 100 90
-                   C 220 -10, 320 -10, 400 90
-                   S 620 200, 700 110
-                   C 760 40, 860 40, 900 100"
+                d="M 100 95
+                   C 220 -10, 320 -10, 400 95
+                   S 620 220, 700 120
+                   C 760 45, 860 45, 900 105"
                 stroke="rgb(51,65,85)"
                 strokeWidth="3"
                 strokeDasharray="10 12"
@@ -208,10 +232,10 @@ export function HowItWorks() {
 
               {/* Progress-filled track — LIGHT */}
               <path
-                d="M 100 90
-                   C 220 -10, 320 -10, 400 90
-                   S 620 200, 700 110
-                   C 760 40, 860 40, 900 100"
+                d="M 100 95
+                   C 220 -10, 320 -10, 400 95
+                   S 620 220, 700 120
+                   C 760 45, 860 45, 900 105"
                 stroke="url(#snakeGradLight)"
                 strokeWidth="4"
                 strokeLinecap="round"
@@ -222,16 +246,16 @@ export function HowItWorks() {
                   strokeDasharray: 1400,
                   strokeDashoffset: 1400 * (1 - pathProgress),
                   transition:
-                    'stroke-dashoffset 0.55s cubic-bezier(0.22, 1, 0.36, 1)',
+                    'stroke-dashoffset 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
                 }}
               />
 
               {/* Progress-filled track — DARK */}
               <path
-                d="M 100 90
-                   C 220 -10, 320 -10, 400 90
-                   S 620 200, 700 110
-                   C 760 40, 860 40, 900 100"
+                d="M 100 95
+                   C 220 -10, 320 -10, 400 95
+                   S 620 220, 700 120
+                   C 760 45, 860 45, 900 105"
                 stroke="url(#snakeGradDark)"
                 strokeWidth="4"
                 strokeLinecap="round"
@@ -242,16 +266,16 @@ export function HowItWorks() {
                   strokeDasharray: 1400,
                   strokeDashoffset: 1400 * (1 - pathProgress),
                   transition:
-                    'stroke-dashoffset 0.55s cubic-bezier(0.22, 1, 0.36, 1)',
+                    'stroke-dashoffset 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
                 }}
               />
             </svg>
 
-            <div className="relative grid grid-cols-3 gap-6 h-[320px]">
+            <div className="relative grid grid-cols-3 gap-6 lg:gap-8 min-h-[380px]">
               {steps.map((step, i) => {
                 const state = getStepState(i);
                 const nodeTop =
-                  i === 0 ? 'top-8' : i === 1 ? 'top-40' : 'top-10';
+                  i === 0 ? 'top-4' : i === 1 ? 'top-28' : 'top-6';
 
                 return (
                   <div
@@ -263,7 +287,7 @@ export function HowItWorks() {
                       willChange: 'transform, opacity',
                     }}
                   >
-                    <div className="relative mb-6">
+                    <div className="relative mb-4">
                       <div
                         className="
                           absolute inset-0 rounded-full
@@ -274,25 +298,37 @@ export function HowItWorks() {
                       />
                       <div
                         className="
-                          relative w-14 h-14 rounded-full
+                          relative w-12 h-12 rounded-full
                           flex items-center justify-center
-                          text-white font-bold text-lg
-                          bg-gradient-to-br from-amber-500 to-orange-600
+                          text-white font-bold text-base
+                          bg-gradient-to-br from-orange-500 to-orange-700
                           shadow-[0_10px_30px_-8px_rgba(234,88,12,0.6)]
-                          dark:shadow-[0_10px_35px_-6px_rgba(251,146,60,0.75)]
-                          ring-4 ring-light dark:ring-slate-950
-                          transition-shadow duration-500
+                          dark:shadow-[0_10px_35px_-6px_rgba(249,115,22,0.75)]
+                          ring-4 ring-white dark:ring-slate-950
+                          transition-all duration-500
                         "
                       >
                         {i + 1}
                       </div>
                     </div>
 
-                    <div className="text-center max-w-xs">
-                      <h3 className="font-bold text-xl md:text-2xl text-dark dark:text-white mb-2 transition-colors">
+                    <div className="w-full max-w-[240px] rounded-2xl overflow-hidden border border-slate-200/90 dark:border-slate-800/90 bg-slate-50/90 dark:bg-slate-900/70 shadow-sm dark:shadow-none mb-4">
+                      <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-200 dark:bg-slate-800">
+                        <img
+                          src={step.imageUrl}
+                          alt={step.imageAlt}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          draggable={false}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="text-center max-w-xs px-2">
+                      <h3 className="font-bold text-lg lg:text-xl text-slate-900 dark:text-white mb-1.5 transition-colors">
                         {step.title}
                       </h3>
-                      <p className="text-fluid-sm text-gray dark:text-slate-400 leading-relaxed transition-colors">
+                      <p className="text-xs lg:text-sm text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
                         {step.desc}
                       </p>
                     </div>
@@ -303,21 +339,21 @@ export function HowItWorks() {
           </div>
 
           {/* ---------- MOBILE VERTICAL ---------- */}
-          <div className="md:hidden relative pl-14">
+          <div className="md:hidden relative pl-14 sm:pl-16">
             <div
-              className="absolute left-6 top-2 bottom-2 w-[3px] rounded-full overflow-hidden
+              className="absolute left-6 sm:left-7 top-2 bottom-2 w-[3px] rounded-full overflow-hidden
                          bg-slate-200 dark:bg-slate-800
                          transition-colors duration-500"
             >
               <div
                 className="w-full origin-top
-                           bg-gradient-to-b from-amber-500 via-orange-500 to-orange-600
-                           dark:from-amber-400 dark:via-orange-400 dark:to-orange-500
+                           bg-gradient-to-b from-orange-500 via-orange-600 to-orange-700
+                           dark:from-orange-400 dark:via-orange-500 dark:to-orange-600
                            transition-colors duration-500"
                 style={{
                   height: `${pathProgress * 100}%`,
                   transition:
-                    'height 0.55s cubic-bezier(0.22, 1, 0.36, 1)',
+                    'height 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
                   boxShadow: '0 0 12px rgba(249,115,22,0.55)',
                 }}
               />
@@ -329,7 +365,7 @@ export function HowItWorks() {
               return (
                 <div
                   key={i}
-                  className="relative mb-10 last:mb-0"
+                  className="relative mb-7 sm:mb-9 last:mb-0"
                   style={{
                     opacity: state.opacity,
                     transform: state.transform,
@@ -338,27 +374,39 @@ export function HowItWorks() {
                 >
                   <div
                     className="
-                      absolute -left-14 top-0
-                      w-12 h-12 rounded-full
+                      absolute -left-14 sm:-left-16 top-0
+                      w-11 h-11 rounded-full
                       flex items-center justify-center
-                      text-white font-bold text-base
-                      bg-gradient-to-br from-amber-500 to-orange-600
+                      text-white font-bold text-sm
+                      bg-gradient-to-br from-orange-500 to-orange-700
                       shadow-[0_8px_20px_-6px_rgba(234,88,12,0.55)]
-                      dark:shadow-[0_8px_24px_-6px_rgba(251,146,60,0.7)]
-                      ring-4 ring-light dark:ring-slate-950
-                      transition-shadow duration-500
+                      dark:shadow-[0_8px_24px_-6px_rgba(249,115,22,0.7)]
+                      ring-4 ring-white dark:ring-slate-950
+                      transition-all duration-500
                     "
                   >
                     {i + 1}
                   </div>
 
-                  <div>
-                    <h3 className="font-bold text-xl text-dark dark:text-white mb-2 transition-colors">
-                      {step.title}
-                    </h3>
-                    <p className="text-fluid-sm text-gray dark:text-slate-400 leading-relaxed transition-colors">
-                      {step.desc}
-                    </p>
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-24 sm:w-28 shrink-0 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900">
+                      <img
+                        src={step.imageUrl}
+                        alt={step.imageAlt}
+                        className="w-full aspect-[4/3] object-cover"
+                        loading="lazy"
+                        draggable={false}
+                      />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-bold text-base sm:text-lg text-slate-900 dark:text-white mb-1 transition-colors">
+                        {step.title}
+                      </h3>
+                      <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
+                        {step.desc}
+                      </p>
+                    </div>
                   </div>
                 </div>
               );

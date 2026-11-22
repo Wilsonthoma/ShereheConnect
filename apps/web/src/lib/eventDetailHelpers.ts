@@ -353,6 +353,19 @@ export function calculateDistanceKm(from: GeoCoords, to: GeoCoords): number {
   return earthRadiusKm * centralAngle;
 }
 
+export function buildEmbedMapUrl(
+  coordsOrLat: GeoCoords | number,
+  lngArg?: number,
+): string {
+  const lat = typeof coordsOrLat === 'number' ? coordsOrLat : coordsOrLat.lat;
+  const lng = typeof coordsOrLat === 'number' ? (lngArg ?? 0) : coordsOrLat.lng;
+  const delta = 0.015;
+  const bbox = `${(lng - delta).toFixed(5)},${(lat - delta).toFixed(5)},${(lng + delta).toFixed(5)},${(lat + delta).toFixed(5)}`;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(
+    bbox,
+  )}&layer=mapnik&marker=${lat.toFixed(5)}%2C${lng.toFixed(5)}`;
+}
+
 export function resolveExternalDirectionsUrl(
   event: EventDetail,
   destinationCoords: GeoCoords | null,

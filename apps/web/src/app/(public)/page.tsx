@@ -1,5 +1,4 @@
 import dynamic from 'next/dynamic';
-import { Navbar } from '@/components/layout';
 import { Hero } from '@/components/landing';
 
 const FeaturedEvents = dynamic(
@@ -65,26 +64,15 @@ const CTABand = dynamic(
   },
 );
 
-const Footer = dynamic(
-  () => import('@/components/layout').then((mod) => mod.Footer),
-  {
-    loading: () => (
-      <footer className="h-24 bg-light dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800" />
-    ),
-  },
-);
-
 export default function Home() {
   return (
-    <main className="min-h-screen bg-light dark:bg-slate-950 transition-colors">
-      <Navbar />
+    <>
       <Hero />
       <FeaturedEvents />
       <HowItWorks />
       <ForOrganizers />
       <WhyShereheConnect />
       <CTABand />
-      <Footer />
-    </main>
+    </>
   );
 }
