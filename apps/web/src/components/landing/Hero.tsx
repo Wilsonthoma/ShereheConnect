@@ -87,7 +87,7 @@ export function Hero() {
   };
 
   return (
-    <section className="relative min-h-[calc(100svh-4rem)] flex items-center overflow-hidden bg-slate-50 dark:bg-[#2B2B2B] text-slate-900 dark:text-white transition-colors duration-300">
+    <section className="relative min-h-[calc(100svh-4rem)] sm:min-h-[calc(100vh-4.375rem)] flex items-center overflow-y-auto overflow-x-hidden bg-slate-50 dark:bg-[#2B2B2B] text-slate-900 dark:text-white transition-colors duration-300">
       {/* 3D map of Kenya: subtle on mobile, balanced on tablet, prominent on desktop */}
       <div
         className="absolute inset-0 w-full h-full z-[1] opacity-25 sm:opacity-75 lg:opacity-100"
@@ -135,14 +135,14 @@ export function Hero() {
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-20 sm:h-24 z-[3] hero-bottom-blend" />
 
       {/* Foreground Content & Typewriter */}
-      <div className="pointer-events-none relative z-20 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-16 lg:py-20">
+      <div className="pointer-events-none relative z-20 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-16 lg:py-20">
         <div className="max-w-xl lg:max-w-2xl flex flex-col justify-center text-left">
           <div
-            className="pointer-events-auto inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full bg-slate-900/[0.06] dark:bg-[#3A3A3A] backdrop-blur-md border border-slate-900/10 dark:border-slate-600 mb-4 sm:mb-6 w-fit max-w-full"
+            className="pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/[0.06] dark:bg-[#3A3A3A] backdrop-blur-md border border-slate-900/10 dark:border-slate-600 mb-3 sm:mb-6 w-fit max-w-full"
             style={step(0)}
           >
             <span className="w-2 h-2 rounded-full bg-coddy-blue animate-pulse shrink-0" />
-            <p className="text-xs sm:text-sm font-medium text-slate-800 dark:text-white">
+            <p             className="text-[11px] sm:text-sm font-medium text-slate-800 dark:text-white">
               {t('hero.tagline.prefix')}{' '}
               <Typewriter
                 words={[
@@ -158,7 +158,7 @@ export function Hero() {
           </div>
 
           <h1
-            className="heading-display text-[2rem] leading-[1.08] sm:text-5xl lg:text-6xl text-slate-900 dark:text-white mb-4 sm:mb-5 sm:leading-[1.12] tracking-tight drop-shadow-sm"
+            className="heading-display text-[1.85rem] leading-[1.06] min-[390px]:text-[2.1rem] sm:text-5xl lg:text-6xl text-slate-900 dark:text-white mb-3 sm:mb-5 sm:leading-[1.12] tracking-tight drop-shadow-sm"
             style={step(120)}
           >
             {t('hero.title.line1')}
@@ -167,7 +167,7 @@ export function Hero() {
           </h1>
 
           <p
-            className="text-sm sm:text-lg text-slate-600 dark:text-white/75 max-w-lg mb-6 sm:mb-8 leading-relaxed"
+            className="text-xs sm:text-lg text-slate-600 dark:text-white/75 max-w-lg mb-4 sm:mb-8 leading-relaxed"
             style={step(240)}
           >
             {t('hero.subtitle')}
@@ -175,7 +175,7 @@ export function Hero() {
 
           <form
             onSubmit={handleSearch}
-            className="pointer-events-auto w-full max-w-xl mb-6 sm:mb-8"
+            className="pointer-events-auto w-full max-w-xl mb-4 sm:mb-8"
             style={step(360)}
           >
             <div className="bg-white/90 dark:bg-white/10 backdrop-blur-xl rounded-2xl shadow-xl dark:shadow-2xl p-1.5 sm:p-2 flex items-center gap-1.5 sm:gap-2 ring-1 ring-slate-900/10 dark:ring-white/20 focus-within:ring-coddy-blue/70 transition">

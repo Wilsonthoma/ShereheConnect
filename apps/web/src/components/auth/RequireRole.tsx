@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { isLoggedIn, getUser, getToken } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -15,7 +15,10 @@ interface RequireRoleProps {
 export function RequireRole({ children, roles, redirectTo = '/login' }: RequireRoleProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [ready, setReady] = useState(false);
+  const user = getUser();
+  const ready = Boolean(
+    isLoggedIn() && user && roles.includes(user.role) && user.status !== 'SUSPENDED',
+  );
 
   // 1. Initial Access Check
   useEffect(() => {
@@ -40,7 +43,6 @@ export function RequireRole({ children, roles, redirectTo = '/login' }: RequireR
       return;
     }
 
-    setReady(true);
   }, [router, pathname, redirectTo, roles]);
 
   // 2. Background Heartbeat Check (Poll every 10 seconds)
@@ -64,14 +66,13 @@ export function RequireRole({ children, roles, redirectTo = '/login' }: RequireR
           // Instantly redirect
           router.replace('/suspended');
         }
-      } catch (err) {
+      } catch {
         // If we get a 401 (token revoked), the api client handles logging them out automatically
       }
     };
 
-    // Check immediately, then every 10 seconds
-    checkStatus();
-    const interval = setInterval(checkStatus, 10000);
+    // Check every 30 seconds; local role and status checks are immediate.
+    const interval = setInterval(checkStatus, 30000);
 
     return () => clearInterval(interval);
   }, [ready, router]);

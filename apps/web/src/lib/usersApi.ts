@@ -3,7 +3,12 @@ import { getToken } from './auth';
 
 export type UserRole = 'ATTENDEE' | 'ORGANIZER' | 'ADMIN';
 export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
-export type KycStatus = 'PENDING' | 'VERIFIED' | 'REJECTED' | 'NEEDS_REVISION';
+export type KycStatus =
+  | 'NOT_SUBMITTED'
+  | 'PENDING'
+  | 'VERIFIED'
+  | 'REJECTED'
+  | 'NEEDS_REVISION';
 
 export interface AdminUserListItem {
   id: string;

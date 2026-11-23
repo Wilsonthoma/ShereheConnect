@@ -9,7 +9,12 @@ import {
 export { isValidKenyanMpesaPhone, normalizeKenyanPhone };
 
 export type OrganizerType = 'INDIVIDUAL' | 'BUSINESS' | 'NGO';
-export type KycStatus = 'PENDING' | 'VERIFIED' | 'REJECTED' | 'NEEDS_REVISION';
+export type KycStatus =
+  | 'NOT_SUBMITTED'
+  | 'PENDING'
+  | 'VERIFIED'
+  | 'REJECTED'
+  | 'NEEDS_REVISION';
 export type PaymentMethodType = 'PAYBILL' | 'TILL' | 'POCHI' | 'SEND_MONEY';
 export type KycDocType = 'BUSINESS_PERMIT' | 'NATIONAL_ID' | 'OTHER';
 
@@ -53,7 +58,10 @@ export interface OrganizerProfile {
   updatedAt: string;
   submitted: boolean;
   paymentMethods: OrganizerPaymentMethod[];
-  activeSubscription: any | null;
+  activeSubscription: {
+    id: string;
+    status: string;
+  } | null;
 }
 
 export interface SubscriptionPlan {

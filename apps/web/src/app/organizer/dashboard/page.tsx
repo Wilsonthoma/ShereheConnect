@@ -82,7 +82,9 @@ export default function OrganizerDashboardPage() {
                     : 'text-amber-900 dark:text-amber-200'
                 }`}
               >
-                {kycStatus === 'NEEDS_REVISION'
+                {kycStatus === 'NOT_SUBMITTED'
+                  ? 'Complete your organizer verification'
+                  : kycStatus === 'NEEDS_REVISION'
                   ? 'Your submission needs changes'
                   : kycStatus === 'REJECTED'
                   ? 'Your verification was rejected'
@@ -99,7 +101,9 @@ export default function OrganizerDashboardPage() {
                     : 'text-amber-800 dark:text-amber-300/90'
                 }`}
               >
-                {kycStatus === 'PENDING'
+                {kycStatus === 'NOT_SUBMITTED'
+                  ? 'Complete onboarding and submit your business, documents, and payment details for admin review.'
+                  : kycStatus === 'PENDING'
                   ? 'Your details have been submitted and are being reviewed by our team. You will be notified via email once approved.'
                   : 'Complete onboarding and submit your details for admin review before creating events.'}
               </p>

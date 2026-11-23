@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -94,11 +94,11 @@ function AdminSidebarImpl({ pathname, onLogout }: AdminSidebarProps) {
 
       <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-1">
         <Link
-          href="/"
+          href="/admin/dashboard"
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to site
+          Dashboard
         </Link>
         <Button
           type="button"
@@ -132,21 +132,21 @@ const AdminSidebar = dynamic(() => Promise.resolve(AdminSidebarImpl), {
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [ready, setReady] = useState(false);
+  const token = getToken();
+  const user = getUser();
+  const ready = Boolean(token && user && user.role === 'ADMIN');
 
   useEffect(() => {
     const token = getToken();
     const user = getUser();
     if (!token || !user || user.role !== 'ADMIN') {
       router.replace('/login?next=/admin/dashboard');
-      return;
     }
-    setReady(true);
   }, [router]);
 
   const handleLogout = useCallback(() => {
     clearAuth();
-    router.replace('/');
+    router.replace('/login');
   }, [router]);
 
   if (!ready) {

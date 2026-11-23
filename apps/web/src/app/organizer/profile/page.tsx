@@ -13,7 +13,6 @@ import {
   Trash2,
   FileText,
   Image as ImageIcon,
-  ShieldCheck,
 } from 'lucide-react';
 import {
   organizerApi,
@@ -27,6 +26,11 @@ const KYC_STYLES: Record<
   string,
   { bg: string; icon: React.ReactNode; label: string }
 > = {
+  NOT_SUBMITTED: {
+    bg: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
+    icon: <AlertTriangle className="w-4 h-4" />,
+    label: 'Not submitted',
+  },
   PENDING: {
     bg: 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300',
     icon: <Clock className="w-4 h-4" />,

@@ -32,6 +32,7 @@ enum OrganizerType {
 }
 
 enum KycStatus {
+  NOT_SUBMITTED
   PENDING
   VERIFIED
   REJECTED
@@ -300,36 +301,36 @@ model EventCategory {
 }
 
 model Event {
-  id                    String      @id @default(uuid()) @db.Uuid
-  organizerId           String      @map("organizer_id") @db.Uuid
-  categoryId            String?     @map("category_id") @db.Uuid
-  title                 String      @db.VarChar(300)
-  slug                  String      @unique @db.VarChar(320)
-  description           String
-  coverImageUrl         String?     @map("cover_image_url")
-  galleryUrls           Json        @default("[]") @map("gallery_urls")
-  venueName             String      @map("venue_name") @db.VarChar(200)
-  address               String
-  county                String      @db.VarChar(100)
-  latitude              Float?
-  longitude             Float?
-  locationAccuracyMeters Int?       @map("location_accuracy_meters")
-  directionsUrl         String?     @map("directions_url") @db.Text
-  startsAt              DateTime    @map("starts_at") @db.Timestamptz
-  endsAt                DateTime    @map("ends_at") @db.Timestamptz
-  timezone              String      @default("Africa/Nairobi") @db.VarChar(50)
-  status                EventStatus @default(DRAFT)
-  submittedAt           DateTime?   @map("submitted_at") @db.Timestamptz
-  approvedAt            DateTime?   @map("approved_at") @db.Timestamptz
-  approvedBy            String?     @map("approved_by") @db.Uuid
-  rejectionReason       String?     @map("rejection_reason")
-  maxAttendees          Int?        @map("max_attendees")
-  totalTicketsAvailable Int?        @map("total_tickets_available")
-  allowGroupBookings    Boolean     @default(false) @map("allow_group_bookings")
-  isFeatured            Boolean     @default(false) @map("is_featured")
-  eventFeatures         Json        @default("[]") @map("event_features")
-  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt             DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  id                     String      @id @default(uuid()) @db.Uuid
+  organizerId            String      @map("organizer_id") @db.Uuid
+  categoryId             String?     @map("category_id") @db.Uuid
+  title                  String      @db.VarChar(300)
+  slug                   String      @unique @db.VarChar(320)
+  description            String
+  coverImageUrl          String?     @map("cover_image_url")
+  galleryUrls            Json        @default("[]") @map("gallery_urls")
+  venueName              String      @map("venue_name") @db.VarChar(200)
+  address                String
+  county                 String      @db.VarChar(100)
+  latitude               Float?
+  longitude              Float?
+  locationAccuracyMeters Int?        @map("location_accuracy_meters")
+  directionsUrl          String?     @map("directions_url") @db.Text
+  startsAt               DateTime    @map("starts_at") @db.Timestamptz
+  endsAt                 DateTime    @map("ends_at") @db.Timestamptz
+  timezone               String      @default("Africa/Nairobi") @db.VarChar(50)
+  status                 EventStatus @default(DRAFT)
+  submittedAt            DateTime?   @map("submitted_at") @db.Timestamptz
+  approvedAt             DateTime?   @map("approved_at") @db.Timestamptz
+  approvedBy             String?     @map("approved_by") @db.Uuid
+  rejectionReason        String?     @map("rejection_reason")
+  maxAttendees           Int?        @map("max_attendees")
+  totalTicketsAvailable  Int?        @map("total_tickets_available")
+  allowGroupBookings     Boolean     @default(false) @map("allow_group_bookings")
+  isFeatured             Boolean     @default(false) @map("is_featured")
+  eventFeatures          Json        @default("[]") @map("event_features")
+  createdAt              DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime    @updatedAt @map("updated_at") @db.Timestamptz
 
   organizer   OrganizerProfile @relation(fields: [organizerId], references: [id])
   category    EventCategory?   @relation(fields: [categoryId], references: [id])

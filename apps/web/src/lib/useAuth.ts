@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { getUser, getToken, isLoggedIn, clearAuth, AuthUser } from './auth';
 
 export function useAuth() {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [authed, setAuthed] = useState(false);
+  const router = useRouter();
+  const [user, setUser] = useState<AuthUser | null>(() => getUser());
+  const [token, setToken] = useState<string | null>(() => getToken());
+  const [loading, setLoading] = useState(false);
+  const [authed, setAuthed] = useState(() => isLoggedIn());
 
   const sync = useCallback(() => {
     setUser(getUser());
@@ -17,7 +19,6 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    sync();
     window.addEventListener('focus', sync);
     window.addEventListener('storage', sync);
     return () => {
@@ -28,8 +29,8 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     clearAuth();
-    window.location.href = '/';
-  }, []);
+    router.replace('/login');
+  }, [router]);
 
   return { user, token, loading, isLoggedIn: authed, logout };
 }

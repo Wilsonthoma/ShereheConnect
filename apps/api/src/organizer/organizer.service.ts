@@ -37,38 +37,12 @@ export class OrganizerService {
     if (!profile) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { role: true, fullName: true, email: true, phone: true },
+        select: { role: true },
       });
       if (!user || user.role !== 'ORGANIZER') {
         throw new ForbiddenException('Organizer profile not available');
       }
-
-      const created = await this.prisma.organizerProfile.create({
-        data: {
-          userId,
-          businessName: user.fullName || 'Unnamed Organizer',
-          organizerType: 'INDIVIDUAL',
-          county: 'Nairobi',
-          phone: user.phone ?? null,
-          kycStatus: 'PENDING',
-        },
-        include: {
-          paymentMethods: { orderBy: { createdAt: 'desc' } },
-          subscriptions: {
-            where: { status: 'ACTIVE' },
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-            include: { plan: true },
-          },
-        },
-      });
-
-      return {
-        ...created,
-        submitted: false,
-        activeSubscription: null,
-        subscriptions: undefined,
-      };
+      return null;
     }
 
     const profileDocuments = Array.isArray(profile.kycDocuments)
@@ -83,9 +57,15 @@ export class OrganizerService {
         profile.paymentMethods.length > 0,
     );
 
+    const hasSubmittedDetails =
+      Boolean(profile.kraPin) &&
+      hasRequiredDocuments &&
+      profile.paymentMethods.length > 0;
+
     return {
       ...profile,
-      submitted,
+      kycStatus: hasSubmittedDetails ? profile.kycStatus : ('NOT_SUBMITTED' as const),
+      submitted: hasSubmittedDetails,
       activeSubscription: profile.subscriptions[0] ?? null,
       subscriptions: undefined,
     };
@@ -94,9 +74,27 @@ export class OrganizerService {
   async getVerificationStatus(userId: string) {
     const profile = await this.prisma.organizerProfile.findUnique({
       where: { userId },
-      select: { kycStatus: true },
+      select: {
+        kycStatus: true,
+        kraPin: true,
+        kycDocuments: true,
+        paymentMethods: { select: { id: true } },
+      },
     });
-    return { kycStatus: profile?.kycStatus ?? KycStatus.PENDING };
+    if (!profile) return { kycStatus: 'NOT_SUBMITTED' as const };
+    const documents = Array.isArray(profile.kycDocuments)
+      ? (profile.kycDocuments as Array<{ type?: string }>)
+      : [];
+    const hasDocuments = REQUIRED_DOCS.every((type) =>
+      documents.some((document) => document.type === type),
+    );
+    const hasSubmittedDetails =
+      Boolean(profile.kraPin) && hasDocuments && profile.paymentMethods.length > 0;
+    return {
+      kycStatus: hasSubmittedDetails
+        ? profile.kycStatus
+        : ('NOT_SUBMITTED' as const),
+    };
   }
 
   async listSubscriptionPlans() {

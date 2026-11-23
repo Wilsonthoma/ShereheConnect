@@ -1,13 +1,24 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { User, Mail, Lock, Eye, EyeOff, Phone } from 'lucide-react';
-import { AuthLayout, RoleSelector } from '@/components/auth';
+import {
+  User,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Phone,
+  Ticket,
+  CalendarPlus,
+  ArrowRight,
+  ArrowLeft,
+} from 'lucide-react';
+import { AuthLayout } from '@/components/auth';
 import { FullPageLoader } from '@/components/ui';
 import { authApi, ApiException } from '@/lib/api';
-import { getHomeRoute, isLoggedIn } from '@/lib/auth';
+import { isLoggedIn } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 import {
@@ -46,7 +57,9 @@ function RegisterForm() {
     return value === key ? fallback : value;
   };
 
-  const [role, setRole] = useState<'ATTENDEE' | 'ORGANIZER'>('ATTENDEE');
+  // null = Step 1 ("Who would you like to sign up as?"), 'ATTENDEE' | 'ORGANIZER' = Step 2 (Form)
+  const [role, setRole] = useState<'ATTENDEE' | 'ORGANIZER' | null>(null);
+
   const [form, setForm] = useState<FormState>({
     fullName: '',
     email: '',
@@ -65,7 +78,7 @@ function RegisterForm() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  /* ---------- Already logged in → redirect ---------- */
+  /* ---------- Already logged in → redirect (original logic) ---------- */
   useEffect(() => {
     if (!isLoggedIn()) return;
     const userRaw = localStorage.getItem('attendee_user');
@@ -142,6 +155,8 @@ function RegisterForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!role) return;
+
     setTouched({
       fullName: true,
       email: true,
@@ -187,25 +202,120 @@ function RegisterForm() {
     }
   };
 
+  const footer = (
+    <>
+      {tr('auth.register.haveAccount', 'Already have an account?')}{' '}
+      <Link
+        href={`/login${
+          nextParam ? `?next=${encodeURIComponent(nextParam)}` : ''
+        }`}
+        className="text-gold hover:text-orange font-semibold transition-colors"
+      >
+        {tr('auth.register.signIn', 'Sign In')}
+      </Link>
+    </>
+  );
+
+  /* ---------- STEP 1: Role Selection Screen ---------- */
+  if (!role) {
+    return (
+      <AuthLayout
+        title={tr(
+          'auth.roleGate.title',
+          'Who would you like to sign up as?',
+        )}
+        footer={footer}
+      >
+        <p className="text-center text-xs text-slate-600 dark:text-white/60 mb-5 -mt-1">
+          {tr(
+            'auth.roleGate.subtitle',
+            'Select your account type to continue to registration.',
+          )}
+        </p>
+
+        <div className="space-y-3.5">
+          {/* ATTENDEE CARD */}
+          <button
+            type="button"
+            onClick={() => setRole('ATTENDEE')}
+            className="w-full text-left group p-4 rounded-2xl border-2 border-slate-300 dark:border-white/20 bg-white dark:bg-white/5 hover:border-gold dark:hover:border-gold hover:bg-amber-50/50 dark:hover:bg-gold/10 transition-all duration-200 flex items-start gap-3.5 shadow-sm cursor-pointer"
+          >
+            <div className="w-11 h-11 rounded-xl bg-amber-500/15 text-gold flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Ticket className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-gold transition-colors">
+                  {tr('auth.role.attendee.title', 'Attendee')}
+                </h3>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-gold group-hover:translate-x-0.5 transition-all shrink-0" />
+              </div>
+              <p className="text-xs text-slate-600 dark:text-white/60 mt-1 leading-relaxed">
+                {tr(
+                  'auth.role.attendee.desc',
+                  'Discover local events, book tickets with M-Pesa, and manage your passes.',
+                )}
+              </p>
+            </div>
+          </button>
+
+          {/* ORGANIZER CARD */}
+          <button
+            type="button"
+            onClick={() => setRole('ORGANIZER')}
+            className="w-full text-left group p-4 rounded-2xl border-2 border-slate-300 dark:border-white/20 bg-white dark:bg-white/5 hover:border-orange dark:hover:border-orange hover:bg-orange-50/50 dark:hover:bg-orange/10 transition-all duration-200 flex items-start gap-3.5 shadow-sm cursor-pointer"
+          >
+            <div className="w-11 h-11 rounded-xl bg-orange-500/15 text-orange flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <CalendarPlus className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-orange transition-colors">
+                  {tr('auth.role.organizer.title', 'Organizer')}
+                </h3>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-orange group-hover:translate-x-0.5 transition-all shrink-0" />
+              </div>
+              <p className="text-xs text-slate-600 dark:text-white/60 mt-1 leading-relaxed">
+                {tr(
+                  'auth.role.organizer.desc',
+                  'Create events, manage ticket tiers, scan attendees, and track payouts.',
+                )}
+              </p>
+            </div>
+          </button>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  /* ---------- STEP 2: Selected Role Registration Form ---------- */
   return (
     <AuthLayout
-      title={tr('auth.register.title', 'Create Account')}
-      footer={
-        <>
-          {tr('auth.register.haveAccount', 'Already have an account?')}{' '}
-          <Link
-            href={`/login${
-              nextParam ? `?next=${encodeURIComponent(nextParam)}` : ''
-            }`}
-            className="text-gold hover:text-orange font-semibold transition-colors"
-          >
-            {tr('auth.register.signIn', 'Sign In')}
-          </Link>
-        </>
+      title={
+        role === 'ORGANIZER'
+          ? tr('auth.register.organizerTitle', 'Create Organizer Account')
+          : tr('auth.register.attendeeTitle', 'Create Attendee Account')
       }
+      footer={footer}
     >
-      <RoleSelector value={role} onChange={setRole} />
-      <p className="text-center text-[0.7rem] text-slate-500 dark:text-white/40 mb-3 -mt-1 transition-colors">
+      <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10">
+        <span className="text-xs font-semibold text-slate-700 dark:text-white/80">
+          {role === 'ORGANIZER'
+            ? tr('auth.register.badge.organizer', 'Role: Event Organizer')
+            : tr('auth.register.badge.attendee', 'Role: Attendee')}
+        </span>
+        <button
+          type="button"
+          disabled={isLoading}
+          onClick={() => setRole(null)}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-gold hover:text-orange transition-colors cursor-pointer"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          {tr('auth.register.changeRole', 'Change')}
+        </button>
+      </div>
+
+      <p className="text-center text-[0.7rem] text-slate-500 dark:text-white/40 mb-3 transition-colors">
         {role === 'ORGANIZER'
           ? tr(
               'auth.register.helper.organizer',
@@ -358,6 +468,20 @@ function RegisterForm() {
   );
 }
 
+interface FormFieldProps {
+  type?: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  error?: string;
+  success?: boolean;
+  leftIcon?: ReactNode;
+  rightIcon?: ReactNode;
+  autoComplete?: string;
+  disabled?: boolean;
+}
+
 function FormField({
   type = 'text',
   placeholder,
@@ -370,7 +494,7 @@ function FormField({
   rightIcon,
   autoComplete,
   disabled,
-}: any) {
+}: FormFieldProps) {
   const hasError = !!error;
   const showSuccess = success && !hasError;
   return (

@@ -8,7 +8,6 @@ import {
   AlertCircle,
   Calendar,
   LayoutDashboard,
-  Users,
   BarChart3,
   CreditCard,
   UserCircle,
@@ -50,8 +49,8 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
 
   useEffect(() => {
     organizerApi.getProfile()
-      .then((p) => setKycStatus(p.kycStatus))
-      .catch(() => {});
+      .then((p) => setKycStatus(p?.kycStatus ?? 'NOT_SUBMITTED'))
+      .catch(() => setKycStatus('NOT_SUBMITTED'));
   }, []);
 
   const isActive = (href: string) =>
@@ -62,7 +61,7 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
 
       {/* Logo */}
       <div className="flex items-center justify-between h-16 px-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
-        <Link href="/" className="flex items-center gap-2.5 group">
+        <Link href="/organizer/dashboard" className="flex items-center gap-2.5 group">
           <div className="w-9 h-9 rounded-xl bg-brand-gradient flex items-center justify-center shadow-md">
             <Calendar className="w-4 h-4 text-white" strokeWidth={2.2} />
           </div>

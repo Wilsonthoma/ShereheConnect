@@ -101,6 +101,10 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Invalid credentials.');
     if (user.status === 'DELETED')
       throw new UnauthorizedException('This account has been deleted.');
+    if (!user.emailVerified)
+      throw new UnauthorizedException(
+        'Please verify your email with the OTP sent to you before signing in.',
+      );
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials.');

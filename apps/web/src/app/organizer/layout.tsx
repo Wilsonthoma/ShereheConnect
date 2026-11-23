@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter, usePathname } from 'next/navigation';
 import { organizerApi } from '@/lib/organizerApi';
@@ -29,12 +29,10 @@ export default function OrganizerLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
     // If we are already on the onboarding page, don't check again
     if (pathname === '/organizer/onboarding') {
-      setIsChecking(false);
       return;
     }
 
@@ -48,8 +46,6 @@ export default function OrganizerLayout({
           profile.kycStatus === 'NOT_SUBMITTED'
         ) {
           router.replace('/organizer/onboarding');
-        } else {
-          setIsChecking(false);
         }
       })
       .catch(() => {
@@ -57,10 +53,6 @@ export default function OrganizerLayout({
         router.replace('/organizer/onboarding');
       });
   }, [pathname, router]);
-
-  if (isChecking && pathname !== '/organizer/onboarding') {
-    return <FullPageLoader message="Checking organizer profile..." />;
-  }
 
   return (
     <RequireRole roles={['ORGANIZER', 'ADMIN']}>

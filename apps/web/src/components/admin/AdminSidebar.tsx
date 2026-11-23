@@ -57,7 +57,7 @@ export function AdminSidebar({ mobileOpen = false, onClose }: AdminSidebarProps)
     <aside className="flex flex-col h-full w-72 bg-slate-900 border-r border-slate-800">
       {/* Logo */}
       <div className="flex items-center justify-between h-16 px-5 border-b border-slate-800 shrink-0">
-        <Link href="/" className="flex items-center gap-2.5 group">
+        <Link href="/admin/dashboard" className="flex items-center gap-2.5 group">
           <div className="w-9 h-9 rounded-xl bg-brand-gradient flex items-center justify-center shadow-md">
             <ShieldCheck className="w-4 h-4 text-white" strokeWidth={2.2} />
           </div>

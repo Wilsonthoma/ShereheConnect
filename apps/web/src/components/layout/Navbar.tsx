@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 import {
@@ -32,6 +32,7 @@ type MobileSection =
 
 export function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { language, setLanguage, t } = useLanguage();
 
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
@@ -86,12 +87,6 @@ export function Navbar() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  /* ---------- Close on route change ---------- */
-  useEffect(() => {
-    setOpenPanel(null);
-    setMobileOpen(false);
-    setMobileSection(null);
-  }, [pathname]);
 
   /* ---------- Body scroll lock when mobile panel open ---------- */
   useEffect(() => {
@@ -145,7 +140,7 @@ export function Navbar() {
 
   const handleLogout = () => {
     clearAuth();
-    window.location.href = '/';
+    router.replace('/login');
   };
 
   const initials = user ? getInitials(user.fullName) : 'U';

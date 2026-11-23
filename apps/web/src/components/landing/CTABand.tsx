@@ -201,7 +201,6 @@ export function CTABand() {
             <span className="text-brand-gradient">
               {t('cta.heading.line2b')}
             </span>
-            ?
           </h2>
 
           {/* SUBTEXT */}

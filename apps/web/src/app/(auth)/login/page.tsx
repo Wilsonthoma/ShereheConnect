@@ -23,7 +23,7 @@ function LoginForm() {
   const verifiedParam = searchParams.get('verified');
 
   const tr = (key: string, fallback: string): string => {
-    const value = t(key as any);
+    const value = t(key);
     return value === key ? fallback : value;
   };
 
@@ -57,7 +57,16 @@ function LoginForm() {
         if (u.status === 'SUSPENDED') {
           router.replace('/suspended');
         } else {
-          router.replace(nextParam || getHomeRoute(u.role));
+          let destination = getHomeRoute(u.role);
+          if (
+            u.role === 'ATTENDEE' &&
+            nextParam &&
+            nextParam.startsWith('/') &&
+            nextParam !== '/'
+          ) {
+            destination = nextParam;
+          }
+          router.replace(destination);
         }
       } catch {
         /* ignore */
@@ -107,8 +116,8 @@ function LoginForm() {
         phone: res.user.phone,
         fullName: res.user.fullName,
         role: res.user.role,
-        status: (res.user as any).status || 'ACTIVE',
-        suspensionReason: (res.user as any).suspensionReason || null,
+        status: res.user.status || 'ACTIVE',
+        suspensionReason: null,
       });
 
       toast.success(
@@ -116,10 +125,13 @@ function LoginForm() {
         `${tr('auth.login.signedInAs', 'Signed in as')} ${res.user.fullName}`,
       );
 
-      // Standard redirect
-      setTimeout(() => {
-        router.replace(nextParam || getHomeRoute(res.user.role));
-      }, 600);
+      const requestedDestination =
+        res.user.role === 'ADMIN' || res.user.role === 'ORGANIZER'
+          ? null
+          : nextParam && nextParam.startsWith('/') && nextParam !== '/'
+            ? nextParam
+            : null;
+      router.replace(requestedDestination || getHomeRoute(res.user.role));
       
     } catch (err) {
       const msg =
@@ -219,7 +231,31 @@ function LoginForm() {
   );
 }
 
-function FormField({ type = 'text', placeholder, value, onChange, onBlur, error, leftIcon, rightIcon, autoComplete, disabled }: any) {
+interface FormFieldProps {
+  type?: 'text' | 'email' | 'password';
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  error?: string;
+  leftIcon?: React.ReactNode;
+  rightIcon?: React.ReactNode;
+  autoComplete?: string;
+  disabled?: boolean;
+}
+
+function FormField({
+  type = 'text',
+  placeholder,
+  value,
+  onChange,
+  onBlur,
+  error,
+  leftIcon,
+  rightIcon,
+  autoComplete,
+  disabled,
+}: FormFieldProps) {
   const hasError = !!error;
   return (
     <div>
