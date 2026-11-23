@@ -112,6 +112,9 @@ export class EventsService {
     }
     if (filter.categoryId) where.categoryId = filter.categoryId;
     if (filter.county) where.county = filter.county;
+    if (filter.featured !== undefined) {
+      where.isFeatured = filter.featured;
+    }
 
     const [total, rawItems] = await this.prisma.$transaction([
       this.prisma.event.count({ where }),

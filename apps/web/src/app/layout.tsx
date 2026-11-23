@@ -5,16 +5,17 @@ import './globals.css';
 import { ThemeProvider } from '@/lib/theme';
 import { ToastProvider } from '@/components/providers/ToastProvider';
 import { LanguageProvider } from '@/lib/i18n/LanguageContext';
+import { MixedHeadings } from '@/components/providers/MixedHeadings';
 
-// Display headings — Kaushan Script paired with Coddy Round fallback stack
+// Display headings use Kaushan Script with Coddy Round as a fallback.
 const kaushan = Kaushan_Script({
   subsets: ['latin'],
-  variable: '--font-display',
+  variable: '--font-kaushan',
   weight: '400',
   display: 'swap',
 });
 
-// Coddy Round — subheadings & standard body/UI text
+// Coddy Round provides the bold heading weights.
 const coddyRound = localFont({
   src: [
     {
@@ -43,7 +44,7 @@ const coddyRound = localFont({
       style: 'normal',
     },
   ],
-  variable: '--font-sans',
+  variable: '--font-coddy',
   display: 'swap',
 });
 
@@ -75,7 +76,10 @@ export default function RootLayout({
     >
       <body className="font-sans font-normal antialiased min-h-screen bg-white dark:bg-[#2B2B2B] text-slate-800 dark:text-slate-100">
         <ThemeProvider>
-          <LanguageProvider>{children}</LanguageProvider>
+          <LanguageProvider>
+            {children}
+            <MixedHeadings />
+          </LanguageProvider>
           <ToastProvider />
         </ThemeProvider>
       </body>

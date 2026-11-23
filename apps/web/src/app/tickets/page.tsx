@@ -370,7 +370,6 @@ export default function TicketsPage() {
       <div className="container-fluid py-8 space-y-6">
         <div>
           <h1
-            style={{ fontFamily: "'Kaushan Script', cursive" }}
             className="text-3xl sm:text-4xl text-slate-900 dark:text-white"
           >
             {t('tickets.title')}

@@ -70,7 +70,6 @@ export function AuthLayout({
             <h1
               className="text-center text-2xl sm:text-3xl text-white mb-1 leading-tight"
               style={{
-                fontFamily: 'var(--font-display)',
                 paddingTop: '0.1em',
                 paddingBottom: '0.1em',
               }}

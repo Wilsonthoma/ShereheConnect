@@ -195,7 +195,6 @@ export default function EventsPage() {
             <div className="lg:col-span-6 space-y-5 text-left relative z-10">
               <div className="space-y-2">
                 <h1
-                  style={{ fontFamily: "'Kaushan Script', cursive" }}
                   className="text-4xl sm:text-5xl text-slate-900 dark:text-white leading-tight"
                 >
                   {t('events.hero.title')}

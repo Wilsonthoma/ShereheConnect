@@ -502,7 +502,6 @@ export default function BookingPaymentPage() {
               Complete Ticket Payment
             </p>
             <h1
-              style={{ fontFamily: "'Kaushan Script', cursive" }}
               className="text-3xl text-slate-900 dark:text-white"
             >
               {booking.event?.title || 'Event Ticket Payment'}

@@ -24,6 +24,24 @@ interface FeaturedEventsProps {
   apiEndpoint?: string;
 }
 
+const API_BASE = (
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+).replace(/\/$/, '');
+
+const DEFAULT_FEATURED_ENDPOINT = `${API_BASE}/events?featured=true&limit=20`;
+
+function resolveEndpoint(endpoint: string): string {
+  if (/^https?:\/\//i.test(endpoint)) {
+    return endpoint;
+  }
+  const normalizedPath = endpoint.startsWith('/api/')
+    ? endpoint.slice(4)
+    : endpoint.startsWith('/')
+      ? endpoint
+      : `/${endpoint}`;
+  return `${API_BASE}${normalizedPath}`;
+}
+
 function isEventFeatured(item: Record<string, unknown>): boolean {
   const raw = item.isFeatured ?? item.featured ?? item.is_featured;
   if (typeof raw === 'boolean') return raw;
@@ -94,35 +112,39 @@ function normalizeEvent(raw: Record<string, unknown>, index: number): Event {
 
 export function FeaturedEvents({
   events,
-  apiEndpoint = '/api/events?featured=true',
+  apiEndpoint = DEFAULT_FEATURED_ENDPOINT,
 }: FeaturedEventsProps) {
   const { t } = useLanguage();
   const sectionRef = useRef<HTMLElement>(null);
+  const hasExplicitEvents = Array.isArray(events) && events.length > 0;
   const [fetchedEvents, setFetchedEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState<boolean>(!events || events.length === 0);
+  const [loading, setLoading] = useState<boolean>(!hasExplicitEvents);
   const [progress, setProgress] = useState(0);
 
-  const hasExplicitEvents = Array.isArray(events) && events.length > 0;
   const displayedEvents = hasExplicitEvents ? events : fetchedEvents;
   const total = displayedEvents.length;
 
   useEffect(() => {
     if (hasExplicitEvents) {
-      setLoading(false);
       return;
     }
 
     const controller = new AbortController();
+    const targetUrl = resolveEndpoint(apiEndpoint);
 
     const loadFeaturedEvents = async () => {
       setLoading(true);
       try {
-        const res = await fetch(apiEndpoint, {
+        const res = await fetch(targetUrl, {
           signal: controller.signal,
           cache: 'no-store',
         });
         if (!res.ok) {
-          throw new Error(`Failed to fetch featured events (${res.status})`);
+          console.error(
+            `Featured events request failed (${res.status})`,
+          );
+          setFetchedEvents([]);
+          return;
         }
         const payload = await res.json();
         if (controller.signal.aborted) return;
@@ -258,7 +280,7 @@ export function FeaturedEvents({
   return (
     <section
       ref={sectionRef}
-      className="relative py-14 sm:py-16 md:py-24 lg:py-28 bg-white dark:bg-slate-950 text-slate-900 dark:text-white overflow-hidden transition-colors duration-300 border-t border-slate-200/70 dark:border-slate-800/70"
+      className="relative py-14 sm:py-16 md:py-24 lg:py-28 bg-gradient-to-b from-slate-50 via-sky-50/60 to-white dark:from-slate-950 dark:via-[#14161b] dark:to-[#111318] text-slate-900 dark:text-white overflow-hidden transition-colors duration-300 border-t border-slate-200/70 dark:border-white/10"
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-50 dark:opacity-30 transition-opacity duration-500"
@@ -286,7 +308,7 @@ export function FeaturedEvents({
             ? Array.from({ length: 4 }).map((_, idx) => (
                 <div
                   key={`skeleton-${idx}`}
-                  className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 animate-pulse"
+                  className="rounded-xl overflow-hidden border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#14161b] animate-pulse"
                 >
                   <div className="aspect-[4/5] w-full bg-slate-200 dark:bg-slate-800" />
                 </div>
@@ -311,14 +333,14 @@ export function FeaturedEvents({
                         group relative block
                         rounded-xl overflow-hidden
                         border-2 border-amber-500/70 dark:border-amber-400/70
-                        bg-white dark:bg-slate-900
+                        bg-white dark:bg-[#14161b]
                         transition-all duration-500
                         hover:-translate-y-1
                         hover:shadow-[0_20px_40px_-15px_rgba(245,158,11,0.35)]
                         hover:border-amber-500 dark:hover:border-amber-400
                       "
                     >
-                      <div className="relative aspect-[4/5] overflow-hidden bg-slate-200 dark:bg-slate-900">
+                      <div className="relative aspect-[4/5] overflow-hidden bg-slate-200 dark:bg-[#14161b]">
                         {event.imageUrl ? (
                           <img
                             src={event.imageUrl}

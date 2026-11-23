@@ -178,7 +178,7 @@ export function WhyShereheConnect() {
       className="relative w-full"
       style={{ height: `calc(100vh + ${SCROLL_ROOM_VH}vh)` }}
     >
-      <section className="sticky top-0 h-screen h-[100dvh] flex items-center bg-white dark:bg-slate-950 text-slate-900 dark:text-white overflow-hidden transition-colors duration-300 border-t border-slate-200/70 dark:border-slate-800/70">
+      <section className="sticky top-0 h-screen h-[100dvh] flex items-center bg-gradient-to-b from-slate-50 via-sky-50/60 to-white dark:from-slate-950 dark:via-[#14161b] dark:to-[#111318] text-slate-900 dark:text-white overflow-hidden transition-colors duration-300 border-t border-slate-200/70 dark:border-white/10">
         {/* Ambient glow — uniform across light & dark themes */}
         <div
           className="pointer-events-none absolute inset-0 opacity-50 dark:opacity-30 transition-opacity duration-500"
@@ -227,8 +227,8 @@ export function WhyShereheConnect() {
                     className="
                       group relative rounded-2xl
                       overflow-hidden
-                      border border-slate-200/80 dark:border-slate-800/80
-                      bg-slate-900
+                      border border-slate-200/80 dark:border-white/10
+                      bg-slate-900 dark:bg-[#14161b]
                       shadow-[0_10px_40px_-12px_rgba(15,23,42,0.18)]
                       dark:shadow-[0_10px_40px_-12px_rgba(0,0,0,0.65)]
                       transition-colors duration-300

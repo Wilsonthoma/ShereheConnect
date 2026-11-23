@@ -13,12 +13,9 @@
   --color-coddy-gray: #3A3A3A;
 
   /* ---------- Fonts Mapping ---------- */
-  /* Headings pair Kaushan Script + Coddy Round */
   --font-display: var(--font-kaushan), var(--font-coddy), cursive, sans-serif;
-  /* Subheadings & secondary headings use Coddy Round (paired with Kaushan Script fallback) */
-  --font-heading: var(--font-coddy), var(--font-kaushan), sans-serif, cursive;
-  /* Body & normal UI text use clean Varela Round */
-  --font-sans: var(--font-varela), system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-coddy), sans-serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   /* ---------- Border Radius ---------- */
   --radius-sm: 0.5rem;
@@ -63,37 +60,36 @@
     color: #f1f5f9;
   }
 
-  /* --- HEADINGS (Kaushan Script + Coddy Round together) --- */
-  h1,
+  /* Primary headings use Kaushan Script; mixed headings can override individual spans with Coddy ExtraBold. */
+  h1 {
+    font-family: var(--font-kaushan), cursive, sans-serif;
+    font-weight: 400;
+    letter-spacing: normal;
+  }
+
+  /* Subheadings use Coddy Round Bold. */
   h2,
   h3,
   h4,
   h5,
   h6 {
-    font-family: var(--font-kaushan), var(--font-coddy), cursive, sans-serif;
-    font-weight: 400;
+    font-family: var(--font-heading);
+    font-weight: 700;
     letter-spacing: normal;
   }
 
-  /* --- SUBHEADINGS (Coddy Round) --- */
   .subheading,
   [data-subheading="true"] {
-    font-family: var(--font-coddy), sans-serif;
-    font-weight: 400;
+    font-family: var(--font-heading);
+    font-weight: 700;
     letter-spacing: normal;
   }
 
-  /* Normal text across paragraphs, spans, lists, containers, and form controls */
-  p,
-  span,
-  li,
-  div,
-  a,
-  button,
+  /* Keep form controls consistent with the normal web font. */
   input,
   textarea,
   select,
-  label {
+  button {
     font-family: var(--font-sans);
     font-weight: 400;
     letter-spacing: normal;
@@ -105,7 +101,6 @@
   }
 
   button {
-    font-family: var(--font-sans);
     cursor: pointer;
   }
 }
@@ -157,13 +152,23 @@
   }
 
   .heading-display {
-    font-family: var(--font-kaushan), var(--font-coddy), cursive, sans-serif;
+    font-family: var(--font-kaushan), cursive, sans-serif;
     font-weight: 400;
     letter-spacing: normal;
     line-height: 1.3;
     padding-top: 0.15em;
     padding-bottom: 0.15em;
     display: block;
+  }
+
+  .heading-kaushan {
+    font-family: var(--font-kaushan), cursive, sans-serif;
+    font-weight: 400;
+  }
+
+  .heading-coddy {
+    font-family: var(--font-coddy), sans-serif;
+    font-weight: 800;
   }
 
   .heading-xl {

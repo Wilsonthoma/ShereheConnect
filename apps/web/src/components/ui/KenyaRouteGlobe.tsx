@@ -28,7 +28,7 @@ const KENYAN_CITIES: KenyanCity[] = [
   { id: 'marsabit', name: 'Marsabit', county: 'Marsabit', lat: 2.3284, lng: 37.9899 },
 ];
 
-// Closed circular loop: A -> B -> C -> D -> E -> F -> back to A
+// Circular loop: A -> B -> C -> D -> E -> F -> direct from F back to A
 const TOUR: string[] = [
   'mombasa',
   'nairobi',
@@ -82,7 +82,8 @@ const ARRIVAL_POP_DELAY_MS = 450;
 const ARRIVAL_POP_DURATION_MS = 3800;
 
 function legDurationMs(lengthDeg: number): number {
-  const ms = 5000 + 1750 * Math.pow(lengthDeg, 0.72);
+  const safeLen = Number.isFinite(lengthDeg) && lengthDeg > 0 ? lengthDeg : 0;
+  const ms = 5000 + 1750 * Math.pow(safeLen, 0.72);
   return Math.min(13000, Math.max(6000, ms));
 }
 
@@ -93,13 +94,41 @@ interface Leg {
   durationMs: number;
 }
 
+function isValidLatLngTuple(pt: unknown): pt is [number, number] {
+  return (
+    Array.isArray(pt) &&
+    pt.length >= 2 &&
+    typeof pt[0] === 'number' &&
+    typeof pt[1] === 'number' &&
+    Number.isFinite(pt[0]) &&
+    Number.isFinite(pt[1]) &&
+    Math.abs(pt[0]) <= 90 &&
+    Math.abs(pt[1]) <= 180
+  );
+}
+
+function sanitizeRings(
+  rings: unknown,
+): LeafletNamespace.LatLngExpression[][][] {
+  if (!Array.isArray(rings)) return [];
+  return rings
+    .map((ring) => {
+      if (!Array.isArray(ring)) return [];
+      return ring
+        .filter(isValidLatLngTuple)
+        .map(([lat, lng]) => [lat, lng] as LeafletNamespace.LatLngTuple);
+    })
+    .filter((ring) => ring.length >= 3)
+    .map((ring) => [ring]);
+}
+
 function pathLengthDeg(coords: Array<[number, number]>): number {
   let total = 0;
   for (let i = 1; i < coords.length; i++) {
-    total += Math.hypot(
-      coords[i][0] - coords[i - 1][0],
-      coords[i][1] - coords[i - 1][1],
-    );
+    const a = coords[i - 1];
+    const b = coords[i];
+    if (!isValidLatLngTuple(a) || !isValidLatLngTuple(b)) continue;
+    total += Math.hypot(b[0] - a[0], b[1] - a[1]);
   }
   return total;
 }
@@ -108,19 +137,22 @@ function resampleByArcLength(
   coords: Array<[number, number]>,
   samples = 360,
 ): Array<[number, number]> {
-  if (coords.length < 2) return coords;
+  const validCoords = coords.filter(isValidLatLngTuple);
+  if (validCoords.length < 2) return validCoords;
 
   const cumDist: number[] = [0];
-  for (let i = 1; i < coords.length; i++) {
+  for (let i = 1; i < validCoords.length; i++) {
     const d = Math.hypot(
-      coords[i][0] - coords[i - 1][0],
-      coords[i][1] - coords[i - 1][1],
+      validCoords[i][0] - validCoords[i - 1][0],
+      validCoords[i][1] - validCoords[i - 1][1],
     );
     cumDist.push(cumDist[i - 1] + d);
   }
 
   const totalDist = cumDist[cumDist.length - 1];
-  if (totalDist === 0) return [coords[0], coords[coords.length - 1]];
+  if (!Number.isFinite(totalDist) || totalDist === 0) {
+    return [validCoords[0], validCoords[validCoords.length - 1]];
+  }
 
   const out: Array<[number, number]> = [];
   let segIdx = 0;
@@ -135,18 +167,23 @@ function resampleByArcLength(
     const span = segEnd - segStart;
     const alpha = span > 0 ? (targetDist - segStart) / span : 0;
 
-    const a = coords[segIdx];
-    const b = coords[segIdx + 1];
-    out.push([a[0] + (b[0] - a[0]) * alpha, a[1] + (b[1] - a[1]) * alpha]);
+    const a = validCoords[segIdx];
+    const b = validCoords[segIdx + 1];
+    const lat = a[0] + (b[0] - a[0]) * alpha;
+    const lng = a[1] + (b[1] - a[1]) * alpha;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      out.push([lat, lng]);
+    }
   }
 
-  return out;
+  return out.length >= 2 ? out : [validCoords[0], validCoords[validCoords.length - 1]];
 }
 
 const LEFT_RESERVE_DESKTOP = 0.42;
 const LEFT_RESERVE_TABLET = 0.18;
 
 function bearingDeg(from: [number, number], to: [number, number]): number {
+  if (!isValidLatLngTuple(from) || !isValidLatLngTuple(to)) return 0;
   const lat1 = (from[0] * Math.PI) / 180;
   const lat2 = (to[0] * Math.PI) / 180;
   const dLng = ((to[1] - from[1]) * Math.PI) / 180;
@@ -154,34 +191,49 @@ function bearingDeg(from: [number, number], to: [number, number]): number {
   const x =
     Math.cos(lat1) * Math.sin(lat2) -
     Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  const deg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  return Number.isFinite(deg) ? deg : 0;
 }
 
 async function fetchRoadPoints(
   origin: KenyanCity,
   dest: KenyanCity,
   signal: AbortSignal,
+  directOnly = false,
 ): Promise<Array<[number, number]>> {
-  const fallback: Array<[number, number]> = [
-    [origin.lat, origin.lng],
-    [dest.lat, dest.lng],
-  ];
+  const direct: Array<[number, number]> = resampleByArcLength(
+    [
+      [origin.lat, origin.lng],
+      [dest.lat, dest.lng],
+    ],
+    360,
+  );
+
+  if (directOnly) {
+    return direct;
+  }
 
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${dest.lng},${dest.lat}?overview=full&geometries=geojson`;
     const res = await fetch(url, { signal });
-    if (!res.ok) return fallback;
+    if (!res.ok) return direct;
     const data = await res.json();
     const rawCoords: Array<[number, number]> | undefined =
       data?.routes?.[0]?.geometry?.coordinates;
-    if (!rawCoords || rawCoords.length < 2) return fallback;
-    const latLngs: Array<[number, number]> = rawCoords.map(([lng, lat]) => [
-      lat,
-      lng,
-    ]);
+    if (!Array.isArray(rawCoords) || rawCoords.length < 2) return direct;
+    const latLngs: Array<[number, number]> = rawCoords
+      .filter(
+        (pair): pair is [number, number] =>
+          Array.isArray(pair) &&
+          pair.length >= 2 &&
+          Number.isFinite(pair[0]) &&
+          Number.isFinite(pair[1]),
+      )
+      .map(([lng, lat]) => [lat, lng]);
+    if (latLngs.length < 2) return direct;
     return resampleByArcLength(latLngs, 360);
   } catch {
-    return fallback;
+    return direct;
   }
 }
 
@@ -303,11 +355,18 @@ export function KenyaRouteGlobe({
     if (!dot) return;
     const w = wrapper.getBoundingClientRect();
     const d = dot.getBoundingClientRect();
-    setPopPos({
-      x: d.left + d.width / 2 - w.left,
-      y: d.top + d.height / 2 - w.top,
-      w: w.width,
-    });
+    if (
+      !Number.isFinite(w.width) ||
+      !Number.isFinite(w.height) ||
+      w.width <= 0 ||
+      w.height <= 0
+    ) {
+      return;
+    }
+    const x = d.left + d.width / 2 - w.left;
+    const y = d.top + d.height / 2 - w.top;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    setPopPos({ x, y, w: w.width });
   }, []);
   const updatePopPosRef = useRef(updatePopPos);
   updatePopPosRef.current = updatePopPos;
@@ -402,44 +461,48 @@ export function KenyaRouteGlobe({
       container.style.background = 'transparent';
 
       const fitKenya = () => {
+        if (!mapContainerRef.current) return;
+        const { clientWidth: w, clientHeight: h } = mapContainerRef.current;
+        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+          return;
+        }
+
         instance.invalidateSize({ animate: false });
-        const { clientWidth: w } = container;
+
         const reserve =
           w >= 1024 ? LEFT_RESERVE_DESKTOP : w >= 640 ? LEFT_RESERVE_TABLET : 0;
+        const padLeft = Math.max(0, Math.round(w * reserve) + 16);
+
         instance.fitBounds(kenyaBounds, {
-          paddingTopLeft: [Math.round(w * reserve) + 16, 56],
+          paddingTopLeft: [padLeft, 56],
           paddingBottomRight: [72, 64],
           animate: false,
         });
       };
 
       const initialDark = detectDarkTheme(theme);
+      const safeRings = sanitizeRings(KENYA_RINGS);
 
-      slabLayerRef.current = L.polygon(
-        KENYA_RINGS.map((ring) => [ring]) as LeafletNamespace.LatLngExpression[][][],
-        {
-          stroke: false,
-          fillColor: initialDark ? '#0b2a45' : '#e0f2fe',
-          fillOpacity: initialDark ? 0.96 : 0.95,
-          className: 'kenya-slab',
-          interactive: false,
-        },
-      ).addTo(instance);
+      slabLayerRef.current = L.polygon(safeRings, {
+        stroke: false,
+        fillColor: initialDark ? '#0b2a45' : '#e0f2fe',
+        fillOpacity: initialDark ? 0.96 : 0.95,
+        className: 'kenya-slab',
+        interactive: false,
+      }).addTo(instance);
 
-      outlineLayerRef.current = L.polygon(
-        KENYA_RINGS.map((ring) => [ring]) as LeafletNamespace.LatLngExpression[][][],
-        {
-          color: initialDark ? '#38bdf8' : '#0284c7',
-          weight: 2,
-          opacity: initialDark ? 0.95 : 0.9,
-          fill: false,
-          lineJoin: 'round',
-          className: 'kenya-outline',
-          interactive: false,
-        },
-      ).addTo(instance);
+      outlineLayerRef.current = L.polygon(safeRings, {
+        color: initialDark ? '#38bdf8' : '#0284c7',
+        weight: 2,
+        opacity: initialDark ? 0.95 : 0.9,
+        fill: false,
+        lineJoin: 'round',
+        className: 'kenya-outline',
+        interactive: false,
+      }).addTo(instance);
 
       KENYAN_CITIES.forEach((city) => {
+        if (!isValidLatLngTuple([city.lat, city.lng])) return;
         const icon = L.divIcon({
           className: 'kenya-city-pin',
           html: `
@@ -595,15 +658,24 @@ export function KenyaRouteGlobe({
         const a = byId.get(TOUR[i]);
         const b = byId.get(TOUR[i + 1]);
         if (!a || !b) continue;
-        const key = `${a.id}>${b.id}`;
+        // Final leg (F -> A) goes directly from Marsabit back to Mombasa
+        const isReturnDirect = i === TOUR.length - 2;
+        const key = `${a.id}>${b.id}:${isReturnDirect ? 'direct' : 'road'}`;
         let coords = cache.get(key);
         if (!coords) {
-          coords = await fetchRoadPoints(a, b, controller.signal);
+          coords = await fetchRoadPoints(
+            a,
+            b,
+            controller.signal,
+            isReturnDirect,
+          );
           if (controller.signal.aborted) return;
           cache.set(key, coords);
         }
-        const durationMs = legDurationMs(pathLengthDeg(coords));
-        built.push({ from: a.id, to: b.id, coords, durationMs });
+        const safeCoords = coords.filter(isValidLatLngTuple);
+        if (safeCoords.length < 2) continue;
+        const durationMs = legDurationMs(pathLengthDeg(safeCoords));
+        built.push({ from: a.id, to: b.id, coords: safeCoords, durationMs });
       }
       if (!controller.signal.aborted) setLegs(built);
     };
@@ -673,12 +745,16 @@ export function KenyaRouteGlobe({
       }, ARRIVAL_POP_DELAY_MS);
     };
 
-    const headingOf = (coords: Array<[number, number]>, i: number) =>
-      bearingDeg(coords[i], coords[Math.min(i + 18, coords.length - 1)]);
+    const headingOf = (coords: Array<[number, number]>, i: number) => {
+      const lookahead = Math.min(i + 28, coords.length - 1);
+      const fromIdx = Math.min(i, Math.max(0, lookahead - 1));
+      return bearingDeg(coords[fromIdx], coords[lookahead]);
+    };
+
     let heading = headingOf(legs[0].coords, 0);
-    const turnToward = (target: number, dtMs: number, tauMs: number) => {
-      const delta = ((target - heading + 540) % 360) - 180;
-      heading += delta * (1 - Math.exp(-dtMs / tauMs));
+    const applyHeading = (deg: number) => {
+      if (!Number.isFinite(deg)) return;
+      heading = ((deg % 360) + 360) % 360;
       const rotator =
         carRotatorRef.current ??
         (container?.querySelector('.kenya-car-rotator') as HTMLElement | null);
@@ -687,6 +763,15 @@ export function KenyaRouteGlobe({
         rotator.style.transform = `rotate(${heading.toFixed(2)}deg)`;
       }
     };
+
+    const turnToward = (target: number, dtMs: number, tauMs: number) => {
+      if (!Number.isFinite(target)) return;
+      const delta = ((target - heading + 540) % 360) - 180;
+      if (Math.abs(delta) < 0.25) return;
+      const next = heading + delta * (1 - Math.exp(-dtMs / Math.max(tauMs, 1)));
+      applyHeading(next);
+    };
+
     const setCarState = (moving: boolean, braking: boolean) => {
       const el =
         carRotatorRef.current ??
@@ -704,12 +789,12 @@ export function KenyaRouteGlobe({
     let lastNow: number | null = null;
 
     const first = legs[0];
-    carMarkerRef.current?.setLatLng(first.coords[0]);
-    traveledLineRef.current?.setLatLngs([first.coords[0]]);
-    markTownCovered(first.from);
-    if (carRotatorRef.current) {
-      carRotatorRef.current.style.transform = `rotate(${heading.toFixed(2)}deg)`;
+    if (isValidLatLngTuple(first.coords[0])) {
+      carMarkerRef.current?.setLatLng(first.coords[0]);
+      traveledLineRef.current?.setLatLngs([first.coords[0]]);
     }
+    markTownCovered(first.from);
+    applyHeading(heading);
     setCarState(true, false);
 
     const tick = (now: number) => {
@@ -728,7 +813,7 @@ export function KenyaRouteGlobe({
       }
 
       const leg = legs[legIndex];
-      const rawT = Math.min((now - moveStart) / leg.durationMs, 1);
+      const rawT = Math.min(Math.max((now - moveStart) / leg.durationMs, 0), 1);
       const eased =
         rawT < 0.5
           ? 16 * rawT * rawT * rawT * rawT * rawT
@@ -745,29 +830,28 @@ export function KenyaRouteGlobe({
       const lng = p1[1] + (p2[1] - p1[1]) * frac;
       const currentPt: [number, number] = [lat, lng];
 
-      carMarkerRef.current?.setLatLng(currentPt);
-      if (rawT < 0.94) {
-        turnToward(headingOf(coords, idx), dt, 260);
-      }
-      setCarState(true, rawT > 0.92);
+      if (isValidLatLngTuple(currentPt)) {
+        carMarkerRef.current?.setLatLng(currentPt);
+        // Only steer while in transit; hold heading steady when arriving at a town
+        if (rawT < 0.9) {
+          turnToward(headingOf(coords, idx), dt, 340);
+        }
+        setCarState(rawT < 0.99, rawT > 0.9);
 
-      const baseIndex = legStartIndices[legIndex] ?? 0;
-      const drivenEnd = Math.min(baseIndex + idx + 1, stitchedCoords.length);
-      traveledLineRef.current?.setLatLngs([
-        ...stitchedCoords.slice(0, drivenEnd),
-        currentPt,
-      ]);
+        const baseIndex = legStartIndices[legIndex] ?? 0;
+        const drivenEnd = Math.min(baseIndex + idx + 1, stitchedCoords.length);
+        const linePts = [
+          ...stitchedCoords.slice(0, drivenEnd).filter(isValidLatLngTuple),
+          currentPt,
+        ];
+        traveledLineRef.current?.setLatLngs(linePts);
+      }
 
       if (rawT >= 1) {
-        const destCity = KENYAN_CITIES.find((c) => c.id === leg.to);
-        if (destCity && carRotatorRef.current) {
-          heading = bearingDeg(p1, [destCity.lat, destCity.lng]);
-          carRotatorRef.current.style.transform = `rotate(${heading.toFixed(2)}deg)`;
-        }
         showArrivalThought(leg.to);
 
         legIndex = (legIndex + 1) % legs.length;
-        if (legIndex === 0) {
+        if (legIndex === 0 && isValidLatLngTuple(legs[0].coords[0])) {
           traveledLineRef.current?.setLatLngs([legs[0].coords[0]]);
         }
         moveStart = now;
@@ -898,240 +982,34 @@ export function KenyaRouteGlobe({
                     : 'bg-white/90 border-sky-600/30 text-sky-800'
                 }`}
               >
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
                 <span>{arrivedTownName}</span>
-                <span
-                  className={`h-1.5 w-1.5 rounded-full animate-ping ${
-                    isDark ? 'bg-sky-400' : 'bg-sky-600'
-                  }`}
-                />
               </div>
-              <div className="absolute bottom-1.5 left-2.5 right-2.5 text-[10px] font-semibold text-white truncate drop-shadow">
+              <div className="absolute bottom-2 left-2.5 right-2.5 text-[11px] font-semibold text-white drop-shadow truncate">
                 {activeHighlight.activity}
               </div>
             </div>
 
             <p
-              className={`px-1.5 pt-2 pb-1 text-center text-xs font-medium leading-snug ${
-                isDark ? 'text-white' : 'text-slate-900'
+              className={`mt-2.5 px-1 text-[12.5px] leading-snug font-medium ${
+                isDark ? 'text-slate-100' : 'text-slate-800'
               }`}
             >
-              {activeHighlight.line}
+              “{activeHighlight.line}”
             </p>
           </div>
 
-          <span
+          <div
             aria-hidden="true"
-            className={`kc-puff-mid pointer-events-none absolute -bottom-3 h-3.5 w-3.5 rounded-full border shadow-md ${
-              isDark
-                ? 'border-sky-400/55 bg-slate-950/95'
-                : 'border-sky-600/35 bg-white/95'
-            }`}
-            style={{ left: `calc(50% + ${puffOffset}px - 7px)` }}
-          />
-          <span
-            aria-hidden="true"
-            className={`pointer-events-none absolute -bottom-6 h-2 w-2 rounded-full border ${
-              isDark
-                ? 'border-sky-400/60 bg-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.9)]'
-                : 'border-sky-600/40 bg-sky-600 shadow-[0_0_10px_rgba(2,132,199,0.55)]'
-            }`}
-            style={{ left: `calc(50% + ${puffOffset * 1.15}px - 4px)` }}
-          />
+            className="kc-thought-tail"
+            style={{ marginLeft: `${puffOffset}px` }}
+          >
+            <span className="kc-puff kc-puff-1" />
+            <span className="kc-puff kc-puff-2" />
+            <span className="kc-puff kc-puff-3" />
+          </div>
         </div>
       )}
-
-      <style>{`
-        .kc-theme-dark .kenya-slab {
-          filter: drop-shadow(0 2px 0 #0a3452) drop-shadow(0 4px 0 #09304c)
-            drop-shadow(0 6px 0 #082b44) drop-shadow(0 8px 0 #07263d)
-            drop-shadow(0 22px 26px rgba(56, 189, 248, 0.28));
-        }
-        .kc-theme-dark .kenya-outline {
-          filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.75));
-        }
-        .kc-theme-light .kenya-slab {
-          filter: drop-shadow(0 2px 0 #bae6fd) drop-shadow(0 4px 0 #7dd3fc)
-            drop-shadow(0 6px 0 #38bdf8) drop-shadow(0 8px 0 #0284c7)
-            drop-shadow(0 18px 22px rgba(2, 132, 199, 0.22));
-        }
-        .kc-theme-light .kenya-outline {
-          filter: drop-shadow(0 0 5px rgba(2, 132, 199, 0.45));
-        }
-        .leaflet-container {
-          background: transparent !important;
-        }
-        .kc-pin {
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          pointer-events: none;
-          user-select: none;
-        }
-        .kc-pin.is-visited {
-          pointer-events: auto;
-          cursor: pointer;
-        }
-        .kc-label {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          padding: 3px 9px;
-          border-radius: 9999px;
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 0.01em;
-          white-space: nowrap;
-          margin-bottom: 5px;
-          opacity: 0;
-          transform: translateY(8px) scale(0.6);
-          transform-origin: 50% 100%;
-          transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        .kc-theme-dark .kc-label {
-          background: rgba(15, 23, 42, 0.88);
-          color: #e2e8f0;
-          border: 1px solid rgba(148, 163, 184, 0.35);
-          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
-        }
-        .kc-theme-light .kc-label {
-          background: rgba(255, 255, 255, 0.94);
-          color: #0f172a;
-          border: 1px solid rgba(2, 132, 199, 0.28);
-          box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
-        }
-        .kc-loc-icon {
-          width: 12px;
-          height: 12px;
-          flex-shrink: 0;
-        }
-        .kc-theme-dark .kc-loc-icon {
-          fill: #38bdf8;
-        }
-        .kc-theme-light .kc-loc-icon {
-          fill: #0284c7;
-        }
-        .kc-dot {
-          position: relative;
-          width: 11px;
-          height: 11px;
-          border-radius: 9999px;
-          border: 2px solid #fff;
-          transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        .kc-theme-dark .kc-dot {
-          background: #38bdf8;
-          box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.22);
-        }
-        .kc-theme-light .kc-dot {
-          background: #0284c7;
-          box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.22);
-        }
-        .kc-ring {
-          position: absolute;
-          inset: -6px;
-          border-radius: 9999px;
-          opacity: 0;
-        }
-        .kc-theme-dark .kc-ring {
-          border: 2px solid rgba(56, 189, 248, 0.85);
-        }
-        .kc-theme-light .kc-ring {
-          border: 2px solid rgba(2, 132, 199, 0.8);
-        }
-        .kc-beam {
-          position: absolute;
-          bottom: 4px;
-          width: 24px;
-          height: 24px;
-          border-radius: 9999px;
-          opacity: 0;
-          pointer-events: none;
-        }
-        .kc-theme-dark .kc-beam {
-          background: radial-gradient(circle, rgba(56,189,248,0.65) 0%, rgba(56,189,248,0) 70%);
-        }
-        .kc-theme-light .kc-beam {
-          background: radial-gradient(circle, rgba(2,132,199,0.5) 0%, rgba(2,132,199,0) 70%);
-        }
-        .kc-pin.is-revealed .kc-label {
-          opacity: 1;
-          transform: translateY(2px) scale(0.95);
-        }
-        .kc-pin.is-visited:hover .kc-label {
-          transform: translateY(-2px) scale(1.04);
-        }
-        .kc-theme-dark .kc-pin.is-visited:hover .kc-label {
-          border-color: rgba(56, 189, 248, 0.9);
-        }
-        .kc-theme-light .kc-pin.is-visited:hover .kc-label {
-          border-color: rgba(2, 132, 199, 0.75);
-        }
-        .kc-pin.is-active .kc-label {
-          color: #ffffff;
-          border-color: rgba(255, 255, 255, 0.65);
-          transform: translateY(-3px) scale(1.1);
-        }
-        .kc-theme-dark .kc-pin.is-active .kc-label {
-          background: rgba(2, 132, 199, 0.96);
-          box-shadow: 0 0 22px rgba(56, 189, 248, 0.7), 0 8px 20px rgba(0, 0, 0, 0.55);
-        }
-        .kc-theme-light .kc-pin.is-active .kc-label {
-          background: rgba(3, 105, 161, 0.96);
-          box-shadow: 0 0 18px rgba(2, 132, 199, 0.45), 0 8px 18px rgba(15, 23, 42, 0.22);
-        }
-        .kc-pin.is-active .kc-loc-icon {
-          fill: #ffffff;
-        }
-        .kc-pin.is-active .kc-dot {
-          transform: scale(1.45);
-        }
-        .kc-pin.is-active .kc-ring {
-          animation: kcRipple 1.1s ease-out infinite;
-        }
-        .kc-pin.is-active .kc-beam {
-          animation: kcBeamWave 1.4s ease-out infinite;
-        }
-        .kc-thought-pop {
-          animation: kcThoughtPop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-        }
-        .kc-bubble-shell {
-          border-radius: 38px 42px 34px 40px / 34px 36px 38px 34px;
-        }
-        .kc-tail {
-          fill: #7f1d1d;
-          transition: fill 0.2s ease;
-        }
-        .kenya-car-rotator.is-braking .kc-tail {
-          fill: #ff3b3b;
-          filter: drop-shadow(0 0 4px rgba(255, 59, 59, 0.95));
-        }
-        .kc-beams {
-          opacity: 0.18;
-          transition: opacity 0.5s ease;
-        }
-        .kenya-car-rotator.is-moving .kc-beams {
-          opacity: 0.85;
-        }
-        @keyframes kcThoughtPop {
-          0% {
-            opacity: 0;
-            filter: blur(2px);
-          }
-          100% {
-            opacity: 1;
-            filter: blur(0);
-          }
-        }
-        @keyframes kcRipple {
-          0% { opacity: 0.95; transform: scale(0.6); }
-          100% { opacity: 0; transform: scale(2.5); }
-        }
-        @keyframes kcBeamWave {
-          0% { opacity: 0.85; transform: scale(0.7); }
-          100% { opacity: 0; transform: scale(3.2); }
-        }
-      `}</style>
     </div>
   );
 }

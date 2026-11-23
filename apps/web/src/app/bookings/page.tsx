@@ -318,7 +318,6 @@ export default function BookingsPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1
-              style={{ fontFamily: "'Kaushan Script', cursive" }}
               className="text-3xl sm:text-4xl text-slate-900 dark:text-white"
             >
               {t('bookings.title')}
