@@ -60,6 +60,14 @@
     color: #f1f5f9;
   }
 
+  .hero-bottom-blend {
+    background: linear-gradient(to bottom, transparent, #f8fafc);
+  }
+
+  .dark .hero-bottom-blend {
+    background: linear-gradient(to bottom, transparent, #2B2B2B);
+  }
+
   /* Primary headings use Kaushan Script; mixed headings can override individual spans with Coddy ExtraBold. */
   h1 {
     font-family: var(--font-kaushan), cursive, sans-serif;

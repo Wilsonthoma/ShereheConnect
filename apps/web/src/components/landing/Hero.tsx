@@ -87,10 +87,10 @@ export function Hero() {
   };
 
   return (
-    <section className="relative min-h-[calc(100vh-4rem)] flex items-center overflow-hidden bg-gradient-to-b from-slate-50 via-sky-50/60 to-white dark:from-slate-950 dark:via-[#14161b] dark:to-[#111318] text-slate-900 dark:text-white transition-colors duration-300">
+    <section className="relative min-h-[calc(100svh-4rem)] flex items-center overflow-hidden bg-slate-50 dark:bg-[#2B2B2B] text-slate-900 dark:text-white transition-colors duration-300">
       {/* 3D map of Kenya: subtle on mobile, balanced on tablet, prominent on desktop */}
       <div
-        className="absolute inset-0 w-full h-full z-[1] opacity-45 sm:opacity-75 lg:opacity-100"
+        className="absolute inset-0 w-full h-full z-[1] opacity-25 sm:opacity-75 lg:opacity-100"
         style={step(200)}
       >
         <KenyaRouteGlobe
@@ -104,7 +104,7 @@ export function Hero() {
         className="pointer-events-none absolute inset-0 z-[2] hidden dark:block"
         style={{
           background:
-            'linear-gradient(to right, rgba(20,22,27,0.98) 0%, rgba(20,22,27,0.94) 26%, rgba(20,22,27,0.78) 38%, rgba(20,22,27,0.46) 48%, rgba(20,22,27,0.16) 58%, rgba(20,22,27,0) 68%)',
+            'linear-gradient(to right, rgba(43,43,43,0.98) 0%, rgba(43,43,43,0.94) 26%, rgba(43,43,43,0.78) 38%, rgba(43,43,43,0.46) 48%, rgba(43,43,43,0.16) 58%, rgba(43,43,43,0) 68%)',
         }}
       />
       <div
@@ -120,7 +120,7 @@ export function Hero() {
         className="pointer-events-none absolute inset-0 z-[2] hidden dark:block"
         style={{
           background:
-            'radial-gradient(ellipse at 72% 50%, rgba(20,22,27,0) 45%, rgba(20,22,27,0.55) 100%)',
+            'radial-gradient(ellipse at 72% 50%, rgba(43,43,43,0) 45%, rgba(43,43,43,0.55) 100%)',
         }}
       />
       <div
@@ -135,10 +135,10 @@ export function Hero() {
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-20 sm:h-24 z-[3] hero-bottom-blend" />
 
       {/* Foreground Content & Typewriter */}
-      <div className="pointer-events-none relative z-20 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
+      <div className="pointer-events-none relative z-20 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-16 lg:py-20">
         <div className="max-w-xl lg:max-w-2xl flex flex-col justify-center text-left">
           <div
-            className="pointer-events-auto inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full bg-slate-900/[0.06] dark:bg-white/10 backdrop-blur-md border border-slate-900/10 dark:border-white/15 mb-5 sm:mb-6 w-fit"
+            className="pointer-events-auto inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full bg-slate-900/[0.06] dark:bg-[#3A3A3A] backdrop-blur-md border border-slate-900/10 dark:border-slate-600 mb-4 sm:mb-6 w-fit max-w-full"
             style={step(0)}
           >
             <span className="w-2 h-2 rounded-full bg-coddy-blue animate-pulse shrink-0" />
@@ -158,7 +158,7 @@ export function Hero() {
           </div>
 
           <h1
-            className="heading-display text-3xl sm:text-5xl lg:text-6xl text-slate-900 dark:text-white mb-4 sm:mb-5 leading-[1.12] tracking-tight drop-shadow-sm"
+            className="heading-display text-[2rem] leading-[1.08] sm:text-5xl lg:text-6xl text-slate-900 dark:text-white mb-4 sm:mb-5 sm:leading-[1.12] tracking-tight drop-shadow-sm"
             style={step(120)}
           >
             {t('hero.title.line1')}

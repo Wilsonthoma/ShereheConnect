@@ -280,7 +280,7 @@ export function FeaturedEvents({
   return (
     <section
       ref={sectionRef}
-      className="relative py-14 sm:py-16 md:py-24 lg:py-28 bg-gradient-to-b from-slate-50 via-sky-50/60 to-white dark:from-slate-950 dark:via-[#14161b] dark:to-[#111318] text-slate-900 dark:text-white overflow-hidden transition-colors duration-300 border-t border-slate-200/70 dark:border-white/10"
+      className="relative py-14 sm:py-16 md:py-24 lg:py-28 bg-slate-50 dark:bg-[#2B2B2B] text-slate-900 dark:text-white overflow-hidden transition-colors duration-300 border-t border-slate-200/70 dark:border-slate-700"
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-50 dark:opacity-30 transition-opacity duration-500"
@@ -308,7 +308,7 @@ export function FeaturedEvents({
             ? Array.from({ length: 4 }).map((_, idx) => (
                 <div
                   key={`skeleton-${idx}`}
-                  className="rounded-xl overflow-hidden border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#14161b] animate-pulse"
+                  className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#3A3A3A] animate-pulse"
                 >
                   <div className="aspect-[4/5] w-full bg-slate-200 dark:bg-slate-800" />
                 </div>
@@ -333,14 +333,14 @@ export function FeaturedEvents({
                         group relative block
                         rounded-xl overflow-hidden
                         border-2 border-amber-500/70 dark:border-amber-400/70
-                        bg-white dark:bg-[#14161b]
+                        bg-white dark:bg-[#3A3A3A]
                         transition-all duration-500
                         hover:-translate-y-1
                         hover:shadow-[0_20px_40px_-15px_rgba(245,158,11,0.35)]
                         hover:border-amber-500 dark:hover:border-amber-400
                       "
                     >
-                      <div className="relative aspect-[4/5] overflow-hidden bg-slate-200 dark:bg-[#14161b]">
+                      <div className="relative aspect-[4/5] overflow-hidden bg-slate-200 dark:bg-[#2B2B2B]">
                         {event.imageUrl ? (
                           <img
                             src={event.imageUrl}

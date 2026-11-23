@@ -33,10 +33,22 @@ export function NotificationBell() {
     setLoading(true);
     try {
       const res = await api.get<Notification[]>('/notifications', token);
-      console.log('🔔 Notifications fetched:', res);
       setNotifications(res);
-    } catch (err: any) {
-      console.error('🔔 Failed to fetch notifications:', err?.message);
+    } catch (err: unknown) {
+      if (typeof err === 'object' && err !== null && 'statusCode' in err) {
+        const statusCode = (err as { statusCode?: number }).statusCode;
+        if (statusCode !== 401) {
+          console.error(
+            '🔔 Failed to fetch notifications:',
+            err instanceof Error ? err.message : 'Unknown notification error',
+          );
+        }
+      } else {
+        console.error(
+          '🔔 Failed to fetch notifications:',
+          err instanceof Error ? err.message : 'Unknown notification error',
+        );
+      }
     } finally {
       setLoading(false);
     }

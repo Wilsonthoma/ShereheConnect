@@ -121,7 +121,7 @@ export function HowItWorks() {
       className="relative w-full"
       style={{ height: `calc(100vh + ${SCROLL_ROOM_VH}vh)` }}
     >
-      <section className="sticky top-0 h-screen h-[100dvh] flex items-center bg-gradient-to-b from-slate-50 via-sky-50/60 to-white dark:from-slate-950 dark:via-[#14161b] dark:to-[#111318] text-slate-900 dark:text-white overflow-hidden transition-colors duration-300 border-t border-slate-200/70 dark:border-white/10">
+      <section className="sticky top-0 h-[100dvh] flex items-center bg-slate-50 dark:bg-[#2B2B2B] text-slate-900 dark:text-white overflow-hidden transition-colors duration-300 border-t border-slate-200/70 dark:border-slate-700">
         {/* Subtle theme-matched ambient accent */}
         <div
           className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-100"
@@ -312,7 +312,7 @@ export function HowItWorks() {
                       </div>
                     </div>
 
-                    <div className="w-full max-w-[240px] rounded-2xl overflow-hidden border border-slate-200/90 dark:border-white/10 bg-slate-50/90 dark:bg-[#14161b]/90 shadow-sm dark:shadow-none mb-4">
+                    <div className="w-full max-w-[240px] rounded-2xl overflow-hidden border border-slate-200/90 dark:border-slate-700 bg-slate-50/90 dark:bg-[#3A3A3A] shadow-sm dark:shadow-none mb-4">
                       <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-200 dark:bg-slate-800">
                         <img
                           src={step.imageUrl}
@@ -389,7 +389,7 @@ export function HowItWorks() {
                   </div>
 
                   <div className="flex items-start gap-3.5">
-                    <div className="w-24 sm:w-28 shrink-0 rounded-xl overflow-hidden border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-[#14161b]">
+                    <div className="w-24 sm:w-28 shrink-0 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-[#3A3A3A]">
                       <img
                         src={step.imageUrl}
                         alt={step.imageAlt}

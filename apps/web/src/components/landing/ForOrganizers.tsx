@@ -148,7 +148,7 @@ export function ForOrganizers() {
   const isSignedIn = Boolean(user);
 
   return (
-    <section className="relative bg-gradient-to-b from-slate-50 via-sky-50/60 to-white dark:from-slate-950 dark:via-[#14161b] dark:to-[#111318] text-slate-900 dark:text-white transition-colors duration-300 overflow-x-clip border-t border-slate-200/70 dark:border-white/10">
+    <section className="relative bg-slate-50 dark:bg-[#2B2B2B] text-slate-900 dark:text-white transition-colors duration-300 overflow-x-clip border-t border-slate-200/70 dark:border-slate-700">
       {/* Subtle theme-matched ambient accent */}
       <div
         className="pointer-events-none absolute inset-0 opacity-70 dark:opacity-100"

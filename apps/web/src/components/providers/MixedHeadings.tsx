@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 
 function applyMixedFonts(root: HTMLHeadingElement) {
-  if (root.dataset.mixedHeading === 'true') return;
+  if (root.querySelector('[data-mixed-word="true"]')) return;
 
   let wordIndex = 0;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -44,8 +44,6 @@ function applyMixedFonts(root: HTMLHeadingElement) {
 
     node.replaceWith(fragment);
   });
-
-  root.dataset.mixedHeading = 'true';
 }
 
 export function MixedHeadings() {
@@ -56,34 +54,7 @@ export function MixedHeadings() {
 
     processAll();
 
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'characterData') {
-          const heading = (mutation.target.parentElement ?? null)?.closest('h1');
-          if (heading) {
-            heading.removeAttribute('data-mixed-heading');
-          }
-          continue;
-        }
-
-        for (const node of Array.from(mutation.addedNodes)) {
-          if (
-            node instanceof HTMLElement &&
-            node.matches('[data-mixed-word="true"]')
-          ) {
-            continue;
-          }
-
-          const heading =
-            node instanceof HTMLElement
-              ? node.closest('h1') ?? node.querySelector('h1')
-              : node.parentElement?.closest('h1');
-
-          if (heading) {
-            heading.removeAttribute('data-mixed-heading');
-          }
-        }
-      }
+    const observer = new MutationObserver(() => {
       processAll();
     });
 
