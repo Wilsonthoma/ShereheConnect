@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter, usePathname } from 'next/navigation';
 import { organizerApi } from '@/lib/organizerApi';
@@ -29,30 +29,34 @@ export default function OrganizerLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [verificationChecked, setVerificationChecked] = useState(false);
 
   useEffect(() => {
-    // If we are already on the onboarding page, don't check again
-    if (pathname === '/organizer/onboarding') {
-      return;
-    }
-
-    organizerApi
-      .getProfile()
-      .then((profile) => {
-        // If profile doesn't exist or KYC is NOT submitted, force them to onboarding
+    organizerApi.getVerificationStatus()
+      .then(({ kycStatus }) => {
+        setVerificationChecked(true);
         if (
-          !profile ||
-          !profile.kycStatus ||
-          profile.kycStatus === 'NOT_SUBMITTED'
+          kycStatus !== 'VERIFIED' &&
+          pathname !== '/organizer/dashboard' &&
+          pathname !== '/organizer/onboarding'
         ) {
-          router.replace('/organizer/onboarding');
+          router.replace('/organizer/dashboard');
         }
       })
       .catch(() => {
-        // If they are brand new (404 profile not found), send to onboarding
-        router.replace('/organizer/onboarding');
+        setVerificationChecked(true);
+        if (
+          pathname !== '/organizer/dashboard' &&
+          pathname !== '/organizer/onboarding'
+        ) {
+          router.replace('/organizer/dashboard');
+        }
       });
   }, [pathname, router]);
+
+  if (!verificationChecked) {
+    return <FullPageLoader message="Checking verification status..." />;
+  }
 
   return (
     <RequireRole roles={['ORGANIZER', 'ADMIN']}>

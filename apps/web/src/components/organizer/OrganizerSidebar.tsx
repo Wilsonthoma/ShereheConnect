@@ -61,7 +61,22 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
 
       {/* Logo */}
       <div className="flex items-center justify-between h-16 px-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
-        <Link href="/organizer/dashboard" className="flex items-center gap-2.5 group">
+        {kycStatus === 'VERIFIED' ? (
+          <Link href="/organizer/dashboard" className="flex items-center gap-2.5 group">
+            <div className="w-9 h-9 rounded-xl bg-brand-gradient flex items-center justify-center shadow-md">
+              <Calendar className="w-4 h-4 text-white" strokeWidth={2.2} />
+            </div>
+            <div className="flex flex-col leading-none">
+              <span className="font-display text-base text-slate-800 dark:text-slate-100">
+                ShereheConnect
+              </span>
+              <span className="text-[0.6rem] text-gold font-medium tracking-wider uppercase mt-0.5">
+                Organizer
+              </span>
+            </div>
+          </Link>
+        ) : (
+          <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-brand-gradient flex items-center justify-center shadow-md">
             <Calendar className="w-4 h-4 text-white" strokeWidth={2.2} />
           </div>
@@ -73,7 +88,8 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
               Organizer
             </span>
           </div>
-        </Link>
+          </div>
+        )}
         {onClose && (
           <button
             onClick={onClose}
@@ -90,7 +106,20 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);
-          return (
+          const disabled = kycStatus !== 'VERIFIED';
+          return disabled ? (
+            <button
+              key={item.href}
+              type="button"
+              disabled
+              aria-disabled="true"
+              title="Complete onboarding and verification to unlock"
+              className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60"
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              <span>{item.label}</span>
+            </button>
+          ) : (
             <Link
               key={item.href}
               href={item.href}
@@ -145,7 +174,7 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
         {BOTTOM_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);
-          return (
+          return kycStatus === 'VERIFIED' ? (
             <Link
               key={item.href}
               href={item.href}
@@ -159,6 +188,18 @@ export function OrganizerSidebar({ mobileOpen = false, onClose }: OrganizerSideb
               <Icon className="w-4 h-4 shrink-0" />
               <span>{item.label}</span>
             </Link>
+          ) : (
+            <button
+              key={item.href}
+              type="button"
+              disabled
+              aria-disabled="true"
+              title="Complete onboarding and verification to unlock"
+              className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60"
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              <span>{item.label}</span>
+            </button>
           );
         })}
       </nav>

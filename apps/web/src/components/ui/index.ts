@@ -16,4 +16,3 @@ export { FullPageLoader, SectionLoader, Spinner, PageSkeleton } from './Loader';
 export { VerifyOtpInput } from './VerifyOtpInput';
 export { ScrollFlipbook } from './ScrollFlipbook';
 export { ImageUploader } from './ImageUploader';export { EventImage } from './EventImage';
-export { MixedHeading } from './MixedHeading';

@@ -5,7 +5,6 @@ import './globals.css';
 import { ThemeProvider } from '@/lib/theme';
 import { ToastProvider } from '@/components/providers/ToastProvider';
 import { LanguageProvider } from '@/lib/i18n/LanguageContext';
-import { MixedHeadings } from '@/components/providers/MixedHeadings';
 
 // Display headings use Kaushan Script with Coddy Round as a fallback.
 const kaushan = Kaushan_Script({
@@ -78,7 +77,6 @@ export default function RootLayout({
         <ThemeProvider>
           <LanguageProvider>
             {children}
-            <MixedHeadings />
           </LanguageProvider>
           <ToastProvider />
         </ThemeProvider>

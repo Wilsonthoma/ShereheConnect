@@ -68,7 +68,7 @@
     background: linear-gradient(to bottom, transparent, #2B2B2B);
   }
 
-  /* Primary headings use Kaushan Script; mixed headings can override individual spans with Coddy ExtraBold. */
+  /* Primary H1 headings use Kaushan Script across the system. */
   h1 {
     font-family: var(--font-kaushan), cursive, sans-serif;
     font-weight: 400;
